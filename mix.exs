@@ -23,7 +23,11 @@ defmodule ExDbus.MixProject do
     [
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
-      {:dbus, path: "../erlang-dbus"}
+      {:dbus, path: "../erlang-dbus"},
+      {:saxy, "~> 1.4.0"},
+
+      # Development dialyzer
+      {:dialyxir, "~> 1.1.0", only: [:dev, :test], runtime: false}
     ]
   end
 end
