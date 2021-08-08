@@ -1,13 +1,39 @@
 defmodule ExDBus.Schema do
+  alias ExDBus.Schema.Importing
   alias ExDBus.Builder
-  # alias ExDBus.Schema.SchemaException
+
+  defmacro __using__(_) do
+    module = __CALLER__.module
+
+    Module.register_attribute(module, :__schema_root__, accumulate: false, persist: false)
+    Module.put_attribute(module, :__schema_root__, Builder.root!(""))
+
+    quote do
+      import Kernel, except: [node: 0, node: 1]
+      import ExDBus.Schema, only: [node: 0, node: 1, node: 2]
+
+      @before_compile ExDBus.Schema
+    end
+  end
+
+  defmacro __before_compile__(env) do
+    root = Module.get_attribute(env.module, :__schema_root__)
+
+    escaped_root = Macro.escape(root)
+
+    quote do
+      def __schema__() do
+        unquote(escaped_root)
+      end
+    end
+  end
 
   defmacro node() do
-    __def_node__(__CALLER__, "/")
+    __def_node__(__CALLER__, "")
   end
 
   defmacro node(do: block) do
-    __def_node__(__CALLER__, "/", block)
+    __def_node__(__CALLER__, "", block)
   end
 
   defmacro node(name) do
@@ -20,10 +46,8 @@ defmodule ExDBus.Schema do
 
   defp __def_node__(_caller, name) do
     quote do
-      service = Module.get_attribute(__MODULE__, :__service)
-      object = Builder.root!(unquote(name))
-      service = Builder.Insert.insert!(service, object)
-      Module.put_attribute(__MODULE__, :__service, service)
+      root = Builder.root!(unquote(name))
+      Module.put_attribute(__MODULE__, :__schema_root__, root)
     end
   end
 
@@ -32,11 +56,10 @@ defmodule ExDBus.Schema do
 
     node_block =
       quote do
-        service = Module.get_attribute(__MODULE__, :__service)
         object = Builder.root!(unquote(name))
         unquote(block)
-        service = Builder.Insert.insert!(service, object)
-        Module.put_attribute(__MODULE__, :__service, service)
+        object = Builder.Reverse.reverse(object)
+        Module.put_attribute(__MODULE__, :__schema_root__, object)
       end
 
     node_block
@@ -53,6 +76,8 @@ defmodule ExDBus.Schema do
       end
 
       unquote(block)
+
+      interface = Builder.Reverse.reverse(interface)
 
       object = Builder.Insert.insert!(object, interface)
     end
@@ -84,8 +109,14 @@ defmodule ExDBus.Schema do
 
       unquote(block)
 
+      object = Builder.Reverse.reverse(object)
+
       object = Builder.Insert.insert!(parent_object, object)
     end
+  end
+
+  defp parse_node({:import, _, _} = ast, caller) do
+    Importing.parse_node(ast, caller)
   end
 
   defp parse_node(ast, _caller) do
@@ -118,7 +149,7 @@ defmodule ExDBus.Schema do
 
       parent = method
       unquote(block)
-      method = parent
+      method = Builder.Reverse.reverse(parent)
 
       # if Builder.Finder.contains?(interface, method) do
       #   raise "Method \"#{unquote(name)}\" already defined in parent node"
@@ -152,14 +183,26 @@ defmodule ExDBus.Schema do
 
       parent = signal
       unquote(block)
-      signal = parent
+      signal = Builder.Reverse.reverse(parent)
+
+      interface = Builder.Insert.insert!(interface, signal)
+    end
+  end
+
+  defp parse_interface({:signal, _, [name]}, _caller) do
+    quote do
+      signal = Builder.signal!(unquote(name))
+
+      if Builder.Finder.contains?(interface, signal) do
+        raise "Signal \"#{unquote(name)}\" already defined in interface"
+      end
 
       interface = Builder.Insert.insert!(interface, signal)
     end
   end
 
   defp parse_interface({:signal, _, [_ | _]}, _) do
-    raise "Signal definition requires name and block"
+    raise "Signal definition requires name and optional block"
   end
 
   defp parse_interface({:property, _, [name, type, access, [do: block]]}, caller) do
@@ -174,13 +217,25 @@ defmodule ExDBus.Schema do
 
       parent = property
       unquote(block)
-      property = parent
+      property = Builder.Reverse.reverse(parent)
+      interface = Builder.Insert.insert!(interface, property)
+    end
+  end
+
+  defp parse_interface({:property, _, [name, type, access]}, _caller) do
+    quote do
+      property = Builder.property!(unquote(name), unquote(type), unquote(access))
+
+      if Builder.Finder.contains?(interface, property) do
+        raise "Property \"#{unquote(name)}\" already defined in interface"
+      end
+
       interface = Builder.Insert.insert!(interface, property)
     end
   end
 
   defp parse_interface({:property, _, [_ | _]}, _) do
-    raise "Property definition requires 3 arguments and block"
+    raise "Property definition requires 3 arguments and optional block"
   end
 
   defp parse_interface(ast, _caller) do
@@ -212,7 +267,7 @@ defmodule ExDBus.Schema do
       prev_parent = parent
       parent = argument
       unquote(block)
-      argument = parent
+      argument = Builder.Reverse.reverse(parent)
       parent = Builder.Insert.insert!(prev_parent, argument)
     end
   end
@@ -246,7 +301,7 @@ defmodule ExDBus.Schema do
       prev_parent = parent
       parent = argument
       unquote(block)
-      argument = parent
+      argument = Builder.Reverse.reverse(parent)
       parent = Builder.Insert.insert!(prev_parent, argument)
     end
   end
