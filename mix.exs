@@ -6,6 +6,7 @@ defmodule ExDbus.MixProject do
       app: :ex_dbus,
       version: "0.1.0",
       elixir: "~> 1.12",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
@@ -14,9 +15,13 @@ defmodule ExDbus.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
+      mod: {ExDBus, []},
       extra_applications: [:logger, :dbus]
     ]
   end
+
+  defp elixirc_paths(:dev), do: ["lib", "examples"]
+  defp elixirc_paths(_), do: ["lib"]
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
