@@ -85,17 +85,19 @@ defmodule ExDBus.Builder.Finder do
     find_by_name(annotations, name)
   end
 
-  @spec find(service(), name() | object()) :: object() | nil
+  @spec find(service(), name() | object()) :: {:ok, object()} | :error
   @spec find(object(), name() | object() | interface()) ::
-          object() | interface() | nil
+          {:ok, object() | interface()} | :error
   @spec find(interface(), name() | object() | member()) ::
-          object() | member() | nil
+          {:ok, object() | member()} | :error
   @spec find(member(), argument() | annotation()) ::
-          argument() | annotation() | nil
-  @spec find(argument(), annotation()) :: annotation() | nil
+          {:ok, argument() | annotation()} | :error
+  @spec find(argument(), annotation()) :: {:ok, annotation()} | :error
   def find(parent, search) do
-    {_, child} = find_index(parent, search)
-    child
+    case find_index(parent, search) do
+      {-1, _} -> :error
+      {_, child} -> {:ok, child}
+    end
   end
 
   @spec contains?(service(), name() | object()) :: boolean()

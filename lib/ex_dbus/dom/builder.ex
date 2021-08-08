@@ -150,15 +150,4 @@ defmodule ExDBus.Builder do
       when is_function(setter) do
     {:property, name, type, access, annotations, {getter, setter}}
   end
-
-  @spec get_tag(definition() | service() | any()) :: tag() | nil
-  def get_tag({:object, _, _}), do: :object
-  def get_tag({:interface, _, _}), do: :interface
-  def get_tag({:method, _, _, _}), do: :method
-  def get_tag({:signal, _, _}), do: :signal
-  def get_tag({:property, _, _, _, _, _}), do: :property
-  def get_tag({:annotation, _, _}), do: :annotation
-  def get_tag({:argument, _, _, _, _}), do: :argument
-  def get_tag({:service, _, _}), do: :service
-  def get_tag(_), do: nil
 end
