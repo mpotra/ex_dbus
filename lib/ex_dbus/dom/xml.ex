@@ -43,6 +43,10 @@ defmodule ExDBus.XML.Saxy do
     element("interface", [name: name], xml_children(children, opts))
   end
 
+  def to_xml({:object, "", children}, opts) do
+    element("node", [], xml_children(children, opts))
+  end
+
   def to_xml({:object, name, children}, opts) do
     element("node", [name: name], xml_children(children, opts))
   end
