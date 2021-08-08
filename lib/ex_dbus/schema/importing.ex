@@ -124,22 +124,30 @@ defmodule ExDBus.Schema.Importing do
     node
   end
 
-  defp parse_node_import({:interface, _meta, [name]}, {_source, node}, caller) do
+  defp parse_node_import({:interface, [_ | _] = _meta, [name]}, {_source, node}, caller) do
     import_interface_from_source(node, "/", name, name, caller)
   end
 
-  defp parse_node_import({:interface, _, [name, opts]}, {_source, node}, caller) do
-    path = Keyword.get(opts, :path, "/")
-    as_name = Keyword.get(opts, :as, name)
+  defp parse_node_import(
+         {:interface, [_ | _] = _meta, [name, opts]} = ast,
+         {_source, node},
+         caller
+       ) do
+    if Keyword.keyword?(opts) do
+      path = Keyword.get(opts, :path, "/")
+      as_name = Keyword.get(opts, :as, name)
 
-    opts
-    |> Keyword.drop([:path, :as])
-    |> case do
-      [] -> :ok
-      keys -> raise "Unknown options #{keys} given to interface(name)"
+      opts
+      |> Keyword.drop([:path, :as])
+      |> case do
+        [] -> :ok
+        keys -> raise "Unknown options #{keys} given to interface(name)"
+      end
+
+      import_interface_from_source(node, path, name, as_name, caller)
+    else
+      ast
     end
-
-    import_interface_from_source(node, path, name, as_name, caller)
   end
 
   defp parse_node_import({:interface, _, _} = ast, {_source, _node}, _caller) do
@@ -192,13 +200,16 @@ defmodule ExDBus.Schema.Importing do
   defp build_import_block(children, _caller) do
     object = Macro.var(:object, ExDBus.Schema)
 
-    children
-    |> Enum.map(fn child ->
-      child = Macro.escape(child)
+    block =
+      children
+      |> Enum.map(fn child ->
+        child = Macro.escape(child)
 
-      quote do
-        unquote(object) = Builder.Insert.insert!(unquote(object), unquote(child))
-      end
-    end)
+        quote do
+          unquote(object) = Builder.Insert.insert!(unquote(object), unquote(child))
+        end
+      end)
+
+    {:__block__, [], block}
   end
 end
