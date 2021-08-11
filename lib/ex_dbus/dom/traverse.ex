@@ -55,6 +55,10 @@ defmodule ExDBus.Tree.Traverse do
   end
 
   # Generic list traverse function, using a given function to recurse
+  defp do_traverse_list(nil, acc, _, _) do
+    {nil, acc}
+  end
+
   defp do_traverse_list([], acc, _, _) do
     {[], acc}
   end
