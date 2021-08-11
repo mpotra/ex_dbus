@@ -67,12 +67,12 @@ defmodule ExDBus.Schema.Importing do
   """
   alias ExDBus.Builder
 
-  def parse_node({:import, _meta, [[do: _block]]} = ast, _caller) do
+  def parse_node({:import, _meta, [[do: _block]]} = ast, _parent, _caller) do
     ast
   end
 
-  def parse_node({:import, _meta, [{:from, _from_meta, [source]}]}, caller) do
-    import_from_source(source, "/", caller)
+  def parse_node({:import, _meta, [{:from, _from_meta, [source]}]}, parent, caller) do
+    import_from_source(source, "/", parent, caller)
   end
 
   def parse_node(
@@ -81,9 +81,10 @@ defmodule ExDBus.Schema.Importing do
            {:from, _from_meta, [source]},
            [path: path]
          ]},
+        parent,
         caller
       ) do
-    import_from_source(source, path, caller)
+    import_from_source(source, path, parent, caller)
   end
 
   def parse_node(
@@ -93,12 +94,13 @@ defmodule ExDBus.Schema.Importing do
            [path: path],
            [do: block]
          ]},
+        parent,
         caller
       ) do
     source = get_expanded_source(source, caller)
     node = get_source_path_node(source, path, caller)
 
-    Macro.prewalk(block, &parse_node_import(&1, {source, node}, caller))
+    Macro.prewalk(block, &parse_node_import(&1, {source, node}, parent, caller))
   end
 
   def parse_node(
@@ -107,30 +109,27 @@ defmodule ExDBus.Schema.Importing do
            {:from, _from_meta, [source]},
            [do: block]
          ]},
+        parent,
         caller
       ) do
     source = get_expanded_source(source, caller)
     node = get_source_path_node(source, "/", caller)
 
-    Macro.prewalk(block, &parse_node_import(&1, {source, node}, caller))
+    Macro.prewalk(block, &parse_node_import(&1, {source, node}, parent, caller))
   end
 
-  # def parse_node({:import, _meta, b}, _caller) do
-  #   IO.inspect(b, label: "IMPORT FROM OTHER")
-  #   :ok
-  # end
-
-  def parse_node({:import, _, _} = node, _caller) do
+  def parse_node({:import, _, _} = node, _parent, _caller) do
     node
   end
 
-  defp parse_node_import({:interface, [_ | _] = _meta, [name]}, {_source, node}, caller) do
-    import_interface_from_source(node, "/", name, name, caller)
+  defp parse_node_import({:interface, [_ | _] = _meta, [name]}, {_source, node}, parent, caller) do
+    import_interface_from_source(node, "/", name, name, parent, caller)
   end
 
   defp parse_node_import(
          {:interface, [_ | _] = _meta, [name, opts]} = ast,
          {_source, node},
+         parent,
          caller
        ) do
     if Keyword.keyword?(opts) do
@@ -144,21 +143,21 @@ defmodule ExDBus.Schema.Importing do
         keys -> raise "Unknown options #{keys} given to interface(name)"
       end
 
-      import_interface_from_source(node, path, name, as_name, caller)
+      import_interface_from_source(node, path, name, as_name, parent, caller)
     else
       ast
     end
   end
 
-  defp parse_node_import({:interface, _, _} = ast, {_source, _node}, _caller) do
+  defp parse_node_import({:interface, _, _} = ast, {_source, _node}, _parent, _caller) do
     ast
   end
 
-  defp parse_node_import(ast, _, _) do
+  defp parse_node_import(ast, _, _parent, _caller) do
     ast
   end
 
-  defp import_interface_from_source(node, path, find_name, as_name, caller) do
+  defp import_interface_from_source(node, path, find_name, as_name, parent, caller) do
     node
     |> ExDBus.Tree.find_path!(path)
     |> ExDBus.Tree.find_interface(find_name)
@@ -166,14 +165,14 @@ defmodule ExDBus.Schema.Importing do
       {:ok, {:interface, _, children}} -> [{:interface, as_name, children}]
       _ -> []
     end
-    |> build_import_block(caller)
+    |> build_import_block(parent, caller)
   end
 
-  defp import_from_source(source, path, caller) do
+  defp import_from_source(source, path, parent, caller) do
     source
     |> get_source_path_node(path, caller)
     |> ExDBus.Tree.children()
-    |> build_import_block(caller)
+    |> build_import_block(parent, caller)
   end
 
   defp get_expanded_source({:__aliases__, _, _} = source, caller) do
@@ -197,8 +196,8 @@ defmodule ExDBus.Schema.Importing do
     ExDBus.Tree.find_path!(source_root, path)
   end
 
-  defp build_import_block(children, _caller) do
-    object = Macro.var(:object, ExDBus.Schema)
+  defp build_import_block(children, parent, _caller) do
+    # object = Macro.var(:object, ExDBus.Schema)
 
     block =
       children
@@ -206,7 +205,8 @@ defmodule ExDBus.Schema.Importing do
         child = Macro.escape(child)
 
         quote do
-          unquote(object) = Builder.Insert.insert!(unquote(object), unquote(child))
+          # unquote(object) = Builder.Insert.insert!(unquote(object), unquote(child))
+          unquote(parent) = Builder.Insert.insert!(unquote(parent), unquote(child))
         end
       end)
 
