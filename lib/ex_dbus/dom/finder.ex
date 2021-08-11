@@ -138,11 +138,45 @@ defmodule ExDBus.Builder.Finder do
     find_interface_method(children, name, filter_arguments(method_children), 0)
   end
 
-  @spec find_method(interface(), method()) :: method() | nil
+  @spec find_method(interface(), method()) :: {:ok, method()} | :error
   def find_method(interface, method) do
-    {_, method} = find_method_index(interface, method)
+    case find_method_index(interface, method) do
+      {-1, _} -> :error
+      {_index, method} -> {:ok, method}
+    end
+  end
 
-    method
+  @spec get_method_signature(method()) :: binary()
+  def get_method_signature({:method, _, children, _}) do
+    children
+    |> Enum.reverse()
+    |> Enum.reduce([], fn
+      {:argument, _, type, :in, _}, acc ->
+        [type | acc]
+
+      _, acc ->
+        acc
+    end)
+    |> Enum.join("")
+  end
+
+  @spec find_method(interface(), binary(), {list() | :any, list() | :any}) :: method()
+  def find_method(interface, method_name, search_signature) do
+    case find_methods(interface, method_name) do
+      [] ->
+        :error
+
+      methods ->
+        methods
+        |> Enum.map(&{get_method_signature(&1), &1})
+        |> Enum.find(nil, fn {method_signature, _} ->
+          method_signature == search_signature
+        end)
+        |> case do
+          nil -> :error
+          {_signature, method} -> {:ok, method}
+        end
+    end
   end
 
   ### Private functions
@@ -215,7 +249,7 @@ defmodule ExDBus.Builder.Finder do
     filter_arguments(children)
   end
 
-  defp method_signature_match?(
+  defp method_arguments_match?(
          [
            {:argument, _name1, type, direction, _annotations1} | args1
          ],
@@ -223,14 +257,14 @@ defmodule ExDBus.Builder.Finder do
            {:argument, _name2, type, direction, _annotations2} | args2
          ]
        ) do
-    method_signature_match?(args1, args2)
+    method_arguments_match?(args1, args2)
   end
 
-  defp method_signature_match?([], []) do
+  defp method_arguments_match?([], []) do
     true
   end
 
-  defp method_signature_match?(_, _) do
+  defp method_arguments_match?(_, _) do
     false
   end
 
@@ -244,7 +278,7 @@ defmodule ExDBus.Builder.Finder do
          arguments,
          index
        ) do
-    if method_signature_match?(filter_arguments(children), arguments) do
+    if method_arguments_match?(filter_arguments(children), arguments) do
       {index, method}
     else
       find_interface_method(methods, name, arguments, index + 1)
