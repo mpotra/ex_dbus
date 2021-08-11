@@ -12,6 +12,6 @@ defmodule ExDBus.XML do
   end
 
   defp inject_doctype(xml) do
-    String.replace(xml, ~r/(<\?xml[^>]*>)/, "\\1#{@doctype}")
+    String.replace(xml, ~r/(<\?xml[^>]*>)/, "#{@doctype}")
   end
 end

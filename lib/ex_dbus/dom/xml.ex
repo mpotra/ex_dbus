@@ -14,16 +14,14 @@ defmodule ExDBus.XML.Saxy do
   end
 
   def to_xml({:argument, name, type, direction, annotations}, opts) do
-    attrs = [name: name, type: type]
-
     attrs =
       if Keyword.get(opts, :attr_direction, true) == false do
-        attrs
+        [name: name, type: type]
       else
-        Keyword.put(attrs, :direction, direction)
+        [name: name, type: type, direction: direction]
       end
 
-    element("argument", attrs, xml_children(annotations, opts))
+    element("arg", attrs, xml_children(annotations, opts))
   end
 
   def to_xml({:property, name, type, access, annotations, _handle}, opts) do
@@ -48,7 +46,7 @@ defmodule ExDBus.XML.Saxy do
   end
 
   def to_xml({:object, name, children}, opts) do
-    element("node", [name: name], xml_children(children, opts))
+    element("node", [name: strip_absolute_path(name)], xml_children(children, opts))
   end
 
   defp xml_children([], _) do
@@ -56,6 +54,26 @@ defmodule ExDBus.XML.Saxy do
   end
 
   defp xml_children([child | children], opts) do
-    [to_xml(child, opts) | xml_children(children, opts)]
+    [child_to_xml(child, opts) | xml_children(children, opts)]
+  end
+
+  defp child_to_xml({:object, name, _children} = child, opts) do
+    if Keyword.get(opts, :nested_objects, true) == false do
+      element("node", [name: strip_absolute_path(name)], [])
+    else
+      to_xml(child, opts)
+    end
+  end
+
+  defp child_to_xml(child, opts) do
+    to_xml(child, opts)
+  end
+
+  defp strip_absolute_path("/" <> name) do
+    name
+  end
+
+  defp strip_absolute_path(name) do
+    name
   end
 end
