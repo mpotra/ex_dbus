@@ -39,7 +39,7 @@ defmodule ExDBus.Tree do
     :error
   end
 
-  def find_child_object({:object, _, children}, path) when is_binary(path) do
+  def find_child_object({:object, _name, children}, path) when is_binary(path) do
     paths =
       path
       |> split_path()
@@ -64,10 +64,15 @@ defmodule ExDBus.Tree do
     find_object(children, name)
   end
 
-  def find_child_object({:object, _, _} = parent, [name, paths]) do
-    case find_child_object(parent, name) do
-      {:ok, child} -> find_child_object(child, paths)
-      :error -> :error
+  def find_child_object({:object, _, _} = parent, [name | paths] = path) do
+    with {:ok, child} <- find_child_object(parent, join_path(path)) do
+      {:ok, child}
+    else
+      _ ->
+        case find_child_object(parent, name) do
+          {:ok, child} -> find_child_object(child, paths)
+          :error -> :error
+        end
     end
   end
 
@@ -99,10 +104,18 @@ defmodule ExDBus.Tree do
     find_object(objects, name)
   end
 
-  def find_object(objects, [name | tail]) when is_list(objects) do
-    case find_object(objects, name) do
-      {:ok, object} -> find_child_object(object, tail)
-      :error -> :error
+  def find_object(objects, [name | tail] = path) when is_list(objects) do
+    with {:ok, object} <- find_object(objects, join_path(path)) do
+      {:ok, object}
+    else
+      _ ->
+        case find_object(objects, name) do
+          {:ok, object} ->
+            find_child_object(object, tail)
+
+          :error ->
+            :error
+        end
     end
   end
 
@@ -224,14 +237,172 @@ defmodule ExDBus.Tree do
     raise "Cannot find interface outside of :object node"
   end
 
+  @spec replace_interface(object(), interface()) :: {:ok, object()} | :error
+  def replace_interface({:object, _, _} = object, {:interface, name, _} = interface) do
+    replace_interface(object, name, interface)
+  end
+
+  @spec replace_interface(object(), String.t(), interface()) :: {:ok, object()} | :error
+  def replace_interface(
+        {:object, object_name, children} = object,
+        interface_name,
+        {:interface, _, _} = interface
+      )
+      when is_binary(interface_name) do
+    case Builder.Finder.find_index(object, {:interface, interface_name, nil}) do
+      {-1, _} ->
+        :error
+
+      {index, _} ->
+        children = List.replace_at(children, index, interface)
+        {:object, object_name, children}
+    end
+  end
+
+  @spec replace_interface_at(object(), String.t() | list(), interface()) ::
+          {:ok, object()} | :error
+  def replace_interface_at(object, path, interface) when is_list(path) do
+    replace_interface_at(object, join_path(path), interface)
+  end
+
+  def replace_interface_at(
+        {:object, object_name, children} = object,
+        search_path,
+        {:interface, interface_name, _} = replace_interface
+      )
+      when is_binary(search_path) do
+    {object, result} =
+      ExDBus.Tree.Traverse.traverse(
+        object,
+        {false, nil, []},
+        fn
+          child, {true, _, _} = acc ->
+            {child, acc}
+
+          {:object, name, _} = child, {_, _, paths} = acc ->
+            {child, {false, nil, [name | paths]}}
+
+          {:interface, name, _} = interface, {false, nil, paths} = acc ->
+            path = join_path(Enum.reverse(paths))
+
+            if path == search_path and name == interface_name do
+              {replace_interface, {true, interface, paths}}
+            else
+              {interface, acc}
+            end
+
+          child, acc ->
+            {child, acc}
+        end,
+        fn
+          child, {true, _, _} = acc ->
+            {child, acc}
+
+          {:object, _, _} = child, {_, _, paths} = acc ->
+            [_ | paths] = paths
+            {child, {false, nil, paths}}
+
+          child, acc ->
+            {child, acc}
+        end
+      )
+
+    case result do
+      {true, old_interface, _} -> {:ok, object}
+      {false, _, _} -> :error
+    end
+  end
+
   # Method functions
-  def find_method(_, _, _) do
+  def find_method(nil, _, _) do
     :error
+  end
+
+  def find_method(_, nil, _) do
+    :error
+  end
+
+  def find_method(interface, method, signature) do
+    Builder.Finder.find_method(interface, method, signature)
+  end
+
+  def get_method_callback({:method, _, _, callback}) when is_function(callback) do
+    {:ok, callback}
+  end
+
+  def get_method_callback({:method, _, _, {:call, _, _} = callback}) do
+    {:ok, callback}
+  end
+
+  def get_method_callback(_) do
+    :error
+  end
+
+  def set_method_callback({:method, name, children, _}, callback) do
+    {:method, name, children, callback}
+  end
+
+  def set_method_callback(_, _) do
+    nil
+  end
+
+  # Property function
+  @spec find_property(interface(), binary()) :: find_result(property())
+  def find_property({:interface, _, _} = interface, property_name) do
+    Builder.Finder.find(interface, {:property, property_name, nil, nil, nil, nil})
+  end
+
+  def get_properties({:interface, _, members}) do
+    filter(members, :property)
+  end
+
+  def property_name({:property, name, _, _, _, _}) do
+    name
+  end
+
+  def property_type({:property, _, type, _, _, _}) do
+    type
+  end
+
+  def property_access({:property, _, _, access, _, _}) do
+    access
+  end
+
+  def property_getter({:property, _, _, _, _, {getter, _}}) do
+    getter
+  end
+
+  def property_setter({:property, _, _, _, _, {_, setter}}) do
+    setter
+  end
+
+  def set_property_getter({:property, name, type, access, annotations, {_, setter}}, getter) do
+    {:property, name, type, access, annotations, {getter, setter}}
+  end
+
+  def set_property_setter({:property, name, type, access, annotations, {getter, _}}, setter) do
+    {:property, name, type, access, annotations, {getter, setter}}
   end
 
   defp split_path(path) when is_binary(path) do
     path
     |> String.split("/")
     |> Enum.map(&("/" <> &1))
+  end
+
+  defp join_path([]) do
+    "/"
+  end
+
+  defp join_path([path]) do
+    path
+  end
+
+  defp join_path(["/" | tail]) do
+    join_path(tail)
+  end
+
+  defp join_path([_ | _] = paths) do
+    Enum.join(paths, "")
   end
 end
