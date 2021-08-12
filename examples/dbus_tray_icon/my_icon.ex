@@ -141,7 +141,7 @@ defmodule MyIcon do
         "Title" => "test_icon",
         "Menu" => "/MenuBar",
         "Status" => "Active",
-        "IconName" => "system-help",
+        "IconName" => "applications-development",
         "OverlayIconName" => "",
         "AttentionIconName" => "",
         "AttentionMovieName" => "",
