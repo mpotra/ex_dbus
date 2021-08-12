@@ -20,6 +20,83 @@ defmodule MyIcon.Config do
     {:reply, :ok, state}
   end
 
+  def handle_call(
+        {:method, "GetLayout", {0, -1, ["type", "children-display"]}, _context},
+        _from,
+        state
+      ) do
+    # Signature: u(ia{sv}av)
+    # result = [
+    #   # u
+    #   0,
+    #   # (
+    #   # i
+    #   [
+    #     0,
+    #     # a
+    #     [
+    #       # a
+    #       # {sv}
+    #       ["label", ["s", "Label Empty"]],
+    #       ["visible", ["b", 1]],
+    #       ["enabled", ["b", 1]],
+    #       ["children-display", ["s", "submenu"]]
+    #     ],
+    #     # a
+    #     [
+    #       # v
+    #       [
+    #         "(ia{sv}av)",
+    #         # (
+    #         [
+    #           # i
+    #           75,
+    #           # a
+    #           [
+    #             # {sv}
+    #             ["label", ["s", "_File"]],
+    #             ["visible", ["b", 1]],
+    #             ["enabled", ["b", 1]],
+    #             ["children-display", ["s", "submenu"]]
+    #           ],
+    #           # av
+    #           []
+    #         ]
+    #       ]
+    #     ]
+    #   ]
+    # ]
+
+    menu = {
+      0,
+      [
+        {"type", {:dbus_variant, :string, "standard"}},
+        {"label", {:dbus_variant, :string, "FileOpener"}},
+        {"children-display", {:dbus_variant, :string, ""}}
+      ],
+      []
+    }
+
+    # "(ia{sv}av)"
+    reply_type = {:struct, [:int32, {:dict, :string, :variant}, {:array, :variant}]}
+
+    reply = {:ok, [:uint32, reply_type], [0, menu]}
+
+    {:reply, reply, state}
+  end
+
+  def handle_call(
+        {:method, "AboutToShow", _args, _context},
+        _from,
+        state
+      ) do
+    {:reply, {:ok, [:boolean], [false]}, state}
+  end
+
+  def handle_call({:method, "Activate", _args, _context}, _from, state) do
+    {:reply, {:ok, [], []}, state}
+  end
+
   def handle_call({:method, method_name, args, context}, _from, state) do
     IO.inspect({method_name, args}, label: "[MyIcon.Config] METHOD call")
 
@@ -60,25 +137,36 @@ defmodule MyIcon do
     {:ok, icon} =
       GenServer.start_link(MyIcon.Config, %{
         "Category" => "ApplicationStatus",
-        "Id" => "MyIcon1",
-        "Title" => "My Icon Title",
+        "Id" => "1",
+        "Title" => "test_icon",
         "Menu" => "/MenuBar",
         "Status" => "Active",
         "IconName" => "system-help",
-        "OverlayIconName" => "system-lock-screen",
-        "AttentionIconName" => "system-help",
-        # "ToolTip" => "process-stop",
+        "OverlayIconName" => "",
+        "AttentionIconName" => "",
+        "AttentionMovieName" => "",
+        "ToolTip" => [
+          {:dbus_variant, :string, "applications-development"},
+          [],
+          {:dbus_variant, :string, "test tooltip"},
+          {:dbus_variant, :string, "some tooltip description here"}
+        ],
         "ItemIsMenu" => false,
-        # "IconThemePath" => "/usr/share/icons/Adwaita",
-        # "IconPixmap" => [128 | [128 | pixdata]],
-        # "IconPixmap" => [],
-        # "IconName" => "web-browser.png",
+        "IconPixmap" => [],
+        "OverlayIconPixmap" => [],
+        "AttentionIconPixmap" => [],
         "WindowId" => 0
       })
 
     :ok = setup_interface({"/StatusNotifierItem", "org.kde.StatusNotifierItem"}, service, icon)
 
-    {:ok, menu} = GenServer.start_link(MyIcon.Config, %{})
+    {:ok, menu} =
+      GenServer.start_link(MyIcon.Config, %{
+        "Version" => 3,
+        "TextDirection" => "ltr",
+        "Status" => "normal",
+        "IconThemePath" => []
+      })
 
     :ok = setup_interface({"/MenuBar", "com.canonical.dbusmenu"}, service, menu)
 
