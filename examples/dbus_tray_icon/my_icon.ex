@@ -67,20 +67,60 @@ defmodule MyIcon.Config do
     #   ]
     # ]
 
+    # "(ia{sv}av)"
+    dbus_menu_item_type = {:struct, [:int32, {:dict, :string, :variant}, {:array, :variant}]}
+
+    children = [
+      {:dbus_variant, dbus_menu_item_type,
+       {
+         1,
+         [
+           {"enabled", {:dbus_variant, :boolean, true}},
+           {"visible", {:dbus_variant, :boolean, true}},
+           {"type", {:dbus_variant, :string, "standard"}},
+           {"label", {:dbus_variant, :string, "File"}},
+           {"children-display", {:dbus_variant, :string, "submenu"}}
+         ],
+         []
+       }},
+      {:dbus_variant, dbus_menu_item_type,
+       {
+         2,
+         [
+           {"enabled", {:dbus_variant, :boolean, true}},
+           {"visible", {:dbus_variant, :boolean, true}},
+           {"type", {:dbus_variant, :string, "standard"}},
+           {"label", {:dbus_variant, :string, "View"}},
+           {"children-display", {:dbus_variant, :string, "submenu"}}
+         ],
+         []
+       }},
+      {:dbus_variant, dbus_menu_item_type,
+       {
+         3,
+         [
+           {"enabled", {:dbus_variant, :boolean, true}},
+           {"visible", {:dbus_variant, :boolean, true}},
+           {"type", {:dbus_variant, :string, "standard"}},
+           {"label", {:dbus_variant, :string, "Quit"}},
+           {"children-display", {:dbus_variant, :string, ""}}
+         ],
+         []
+       }}
+    ]
+
     menu = {
       0,
       [
+        {"enabled", {:dbus_variant, :boolean, true}},
+        {"visible", {:dbus_variant, :boolean, true}},
         {"type", {:dbus_variant, :string, "standard"}},
-        {"label", {:dbus_variant, :string, "FileOpener"}},
-        {"children-display", {:dbus_variant, :string, ""}}
+        {"children-display", {:dbus_variant, :string, "submenu"}}
       ],
-      []
+      children
     }
 
-    # "(ia{sv}av)"
-    reply_type = {:struct, [:int32, {:dict, :string, :variant}, {:array, :variant}]}
-
-    reply = {:ok, [:uint32, reply_type], [0, menu]}
+    reply = {:ok, [:uint32, dbus_menu_item_type], [0, menu]}
 
     {:reply, reply, state}
   end
