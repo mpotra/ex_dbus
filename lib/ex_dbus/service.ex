@@ -201,6 +201,10 @@ defmodule ExDBus.Service do
     raise "Invalid :schema provided. Must be a module or a :object tree struct"
   end
 
+  def get_bus(service_pid) do
+    GenServer.call(service_pid, :get_bus)
+  end
+
   def register_object(service_pid, path) do
     GenServer.call(service_pid, {:register_object, path, service_pid})
   end
@@ -251,6 +255,10 @@ defmodule ExDBus.Service do
   # handle_call
 
   @impl true
+  def handle_call(:get_bus, _from, %{bus: bus} = state) do
+    {:reply, bus, state}
+  end
+
   def handle_call({:get_object, path}, _from, %{root: root} = state) do
     {:reply, Tree.find_path(root, path), state}
   end
@@ -261,6 +269,26 @@ defmodule ExDBus.Service do
     else
       error -> {:reply, error, state}
     end
+  end
+
+  def handle_call({:introspect, destination, path}, from, %{bus: bus} = state) do
+    reply = GenServer.call(bus, {:introspect, destination, path})
+    {:reply, reply, state}
+  end
+
+  def handle_call({:find_object, destination, path}, from, %{bus: bus} = state) do
+    reply = GenServer.call(bus, {:find_object, destination, path})
+    {:reply, reply, state}
+  end
+
+  def handle_call({:has_object, destination, path}, from, %{bus: bus} = state) do
+    reply = GenServer.call(bus, {:has_object, destination, path})
+    {:reply, reply, state}
+  end
+
+  def handle_call({:has_interface, destination, path, interface}, from, %{bus: bus} = state) do
+    reply = GenServer.call(bus, {:has_interface, destination, path, interface})
+    {:reply, reply, state}
   end
 
   def handle_call(
