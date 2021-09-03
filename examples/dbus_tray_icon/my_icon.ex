@@ -132,6 +132,9 @@ defmodule MyIcon do
         DBusTrayIcon.IconSchema
       )
 
+    bus = ExDBus.Service.get_bus(service)
+    :ok = can_register(bus)
+
     # pixdata = gen_icon(128, 128)
 
     {:ok, icon} =
@@ -221,6 +224,36 @@ defmodule MyIcon do
   @impl true
   def handle_info(message, state) do
     {:noreply, state}
+  end
+
+  defp can_register(bus) do
+    with :ok <- has_status_notifier(bus) do
+      :ok
+    end
+  end
+
+  defp has_status_notifier(bus) do
+    owner_result =
+      GenServer.call(
+        bus,
+        {:call_method, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+         "GetNameOwner", {"s", [:string], ["org.kde.StatusNotifierWatcher"]}}
+      )
+
+    iface_result =
+      GenServer.call(
+        bus,
+        {:has_interface, "org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher",
+         "org.kde.StatusNotifierWatcher"}
+      )
+
+    with {:ok, _} <- owner_result,
+         {:ok, true} <- iface_result do
+      :ok
+    else
+      {:ok, _} -> {:error, "Could not find valid StatusNotifierWatcher"}
+      error -> error
+    end
   end
 
   defp setup_interface({path, interface_name}, service, handle) do
