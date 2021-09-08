@@ -146,6 +146,38 @@ defmodule MyIcon.Config do
   end
 end
 
+defmodule MyIcon.Router do
+  def method(path, interface, method, signature, args, context) do
+    IO.inspect(
+      [
+        path,
+        interface,
+        method,
+        signature,
+        args,
+        context
+      ],
+      label: "ROUTE METHOD"
+    )
+
+    :skip
+  end
+
+  def get_property(path, interface, property, context) do
+    IO.inspect(
+      [
+        path,
+        interface,
+        property,
+        context
+      ],
+      label: "ROUTE GET PROPERTY"
+    )
+
+    :skip
+  end
+end
+
 defmodule MyIcon do
   use GenServer
   # require ExDBus.DBusTrayIcon.IconSchema
@@ -169,7 +201,8 @@ defmodule MyIcon do
     {:ok, service} =
       ExDBus.Service.start_link(
         name,
-        DBusTrayIcon.IconSchema
+        DBusTrayIcon.IconSchema,
+        router: MyIcon.Router
       )
 
     bus = ExDBus.Service.get_bus(service)
@@ -312,13 +345,21 @@ defmodule MyIcon do
       |> Enum.map(fn child ->
         case ExDBus.Tree.get_tag(child) do
           :property ->
-            child
-            |> ExDBus.Tree.set_property_setter(prop_setter)
-            |> ExDBus.Tree.set_property_getter(prop_getter)
+            if elem(child, 1) == "Status" do
+              child
+            else
+              child
+              |> ExDBus.Tree.set_property_setter(prop_setter)
+              |> ExDBus.Tree.set_property_getter(prop_getter)
+            end
 
           :method ->
-            child
-            |> ExDBus.Tree.set_method_callback(method_callback)
+            if elem(child, 1) == "Event" do
+              child
+            else
+              child
+              |> ExDBus.Tree.set_method_callback(method_callback)
+            end
 
           _ ->
             child

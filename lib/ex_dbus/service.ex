@@ -1,6 +1,8 @@
 defmodule ExDBus.Service do
-  alias ExDBus.Builder
+  use GenServer
   alias ExDBus.Tree
+  alias ExDBus.Spec
+  alias ErlangDBus.Message
 
   # defmacro __using__(opts) do
   #   service_name = Keyword.get(opts, :service, nil)
@@ -145,48 +147,53 @@ defmodule ExDBus.Service do
   #   end
   # end
 
-  def start_link(name, schema, opts \\ []) do
+  def start_link(name, schema, init_opts \\ [], opts \\ []) do
     GenServer.start_link(
       __MODULE__,
-      [
+      Keyword.merge(init_opts,
         name: name,
         schema: schema
-      ],
+      ),
       opts
     )
   end
 
   @impl true
   def init([_ | _] = opts) do
-    IO.inspect(self(), label: "INIT PID")
-    IO.inspect(opts, label: "INIT STACK")
-
     service_name = Keyword.get(opts, :name, nil)
     schema = Keyword.get(opts, :schema, nil)
     server = Keyword.get(opts, :server, nil)
+    router = Keyword.get(opts, :router, nil)
 
     if service_name == nil do
-      raise "Service requires the :name option"
+      # raise "Service requires the :name option"
     end
 
     if schema == nil do
-      raise "Service requires the :schema option"
+      # raise "Service requires the :schema option"
     end
 
     root = get_root(schema)
 
-    {:ok, {bus, service}} = register_service(self(), service_name)
+    case register_service(self(), service_name) do
+      {:ok, {bus, service}} ->
+        state = %{
+          name: service_name,
+          root: root,
+          bus: bus,
+          service: service,
+          server: server,
+          registered_objects: %{},
+          router: router
+        }
 
-    state = %{
-      name: service_name,
-      root: root,
-      bus: bus,
-      service: service,
-      server: server,
-      registered_objects: %{}
-    }
+        {:ok, state}
 
-    {:ok, state}
+      _ ->
+        {:stop, "Could not register service"}
+    end
+
+    #
   end
 
   def get_root(schema) when is_atom(schema) do
@@ -395,7 +402,7 @@ defmodule ExDBus.Service do
   @impl true
   def handle_info({:dbus_method_call, msg, conn} = instr, state) do
     IO.inspect(msg, label: "----[INFO dbus_method_call]-----")
-    path = ErlangDBus.Message.get_field(:path, msg)
+    path = Message.get_field(:path, msg)
 
     case __get_registered_object(state, path) do
       {:ok, handle} ->
@@ -412,13 +419,13 @@ defmodule ExDBus.Service do
     {:noreply, state}
   end
 
-  defp handle_dbus_method_call(msg, conn, state) do
-    path = ErlangDBus.Message.get_field(:path, msg)
-    interface = ErlangDBus.Message.get_field(:interface, msg)
-    member = ErlangDBus.Message.get_field(:member, msg)
+  def handle_dbus_method_call(msg, conn, state) do
+    path = Message.get_field(:path, msg)
+    interface = Message.get_field(:interface, msg)
+    member = Message.get_field(:member, msg)
 
     signature =
-      ErlangDBus.Message.find_field(:signature, msg)
+      Message.find_field(:signature, msg)
       |> case do
         :undefined -> ""
         s -> s
@@ -434,44 +441,69 @@ defmodule ExDBus.Service do
 
     reply =
       case exec_dbus_method_call(method, state) do
-        :no_return ->
-          :no_return
-
         {:ok, types, values} ->
-          :dbus_message.return(msg, types, values)
+          Message.return(msg, types, values)
 
         {:error, name, message} ->
-          :dbus_message.error(msg, name, message)
+          Message.error(msg, name, message)
       end
 
-    unless reply == :no_return do
-      :ok = :dbus_connection.cast(conn, reply)
+    case reply do
+      {:error, _, _} ->
+        :ok
+
+      _ ->
+        try do
+          :dbus_connection.cast(conn, reply)
+        rescue
+          _ -> nil
+        end
     end
 
     state
   end
 
-  def exec_dbus_method_call({path, interface_name, method_name, signature, args} = m, %{
-        root: root
+  @spec exec_dbus_method_call(
+          {path :: String.t(), interface_name :: String.t(), method_name :: String.t(),
+           signature :: String.t(), body :: any},
+          state :: map()
+        ) ::
+          Spec.dbus_reply()
+  def exec_dbus_method_call({path, interface_name, method_name, signature, args}, %{
+        root: root,
+        router: router
       }) do
     with {:object, {:ok, object}} <- {:object, Tree.find_path([root], path)},
          {:interface, {:ok, interface}} <-
            {:interface, Tree.find_interface(object, interface_name)},
          {:method, {:ok, method}} <-
-           {:method, Tree.find_method(interface, method_name, signature)},
-         {:callback, {:ok, callback}} <- {:callback, Tree.get_method_callback(method)} do
-      call_method_callback(
-        callback,
-        method_name,
-        args,
-        %{
-          node: object,
-          path: path,
-          interface: interface_name,
-          method: method_name,
-          signature: signature
-        }
-      )
+           {:method, Tree.find_method(interface, method_name, signature)} do
+      case Tree.get_method_callback(method) do
+        {:ok, callback} ->
+          call_method_callback(
+            callback,
+            method_name,
+            args,
+            %{
+              node: object,
+              path: path,
+              interface: interface_name,
+              method: method_name,
+              signature: signature,
+              router: router
+            }
+          )
+
+        nil ->
+          route_method(router, path, interface_name, method_name, signature, args, %{
+            node: object,
+            router: router
+          })
+
+        _ ->
+          {:error, "org.freedesktop.DBus.Error.UnknownMethod",
+           "Method not found on given interface"}
+      end
     else
       {:object, _} ->
         {:error, "org.freedesktop.DBus.Error.UnknownObject",
@@ -484,25 +516,50 @@ defmodule ExDBus.Service do
       {:method, _} ->
         {:error, "org.freedesktop.DBus.Error.UnknownMethod",
          "Method (#{method_name}) not found on given interface"}
-
-      {:callback, _} ->
-        {:error, "org.freedesktop.DBus.Error.UnknownMethod",
-         "Method not found on given interface"}
     end
   end
 
+  @spec register_service(any, any) :: {:ok, {pid(), pid()}} | :ignore | {:error, any}
   def register_service(pid, service_name) do
-    {:ok, bus} = ExDBus.Bus.start_link(:session)
-    :ok = ExDBus.Bus.connect(bus, pid)
-    :ok = ExDBus.Bus.register_service(bus, service_name, nil)
-    {:ok, {bus, pid}}
+    with {:ok, bus} <- ExDBus.Bus.start_link(:session),
+         :ok <- ExDBus.Bus.connect(bus, pid),
+         :ok <- ExDBus.Bus.register_service(bus, service_name, nil) do
+      {:ok, {bus, pid}}
+    end
   end
 
-  defp call_method_callback(callback, method_name, args, context) when is_function(callback) do
-    callback.(args, context)
+  # defp route_method(nil, _path, _interface, _method, _args, _context) do
+  #   {:error, "org.freedesktop.DBus.Error.UnknownMethod", "Method not found on given interface"}
+  # end
+
+  defp route_method(router, path, interface, method, signature, args, context) do
+    try do
+      router.method(path, interface, method, signature, args, context)
+    rescue
+      _e ->
+        {:error, "org.freedesktop.DBus.Error.UnknownMethod",
+         "Method not found on given interface"}
+    else
+      :skip ->
+        {:error, "org.freedesktop.DBus.Error.UnknownMethod",
+         "Method not found on given interface"}
+
+      result ->
+        result
+    end
   end
 
-  defp call_method_callback({:call, pid, remote_method}, method_name, args, context) do
+  def call_method_callback(callback, _method_name, args, context) when is_function(callback) do
+    try do
+      callback.(args, context)
+    rescue
+      e -> {:error, "org.freedesktop.DBus.Error.Failed", e.message}
+    else
+      return -> return
+    end
+  end
+
+  def call_method_callback({:call, pid, remote_method}, method_name, args, context) do
     GenServer.call(pid, {remote_method, method_name, args, context})
   end
 end

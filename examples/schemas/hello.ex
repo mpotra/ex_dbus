@@ -11,7 +11,7 @@ defmodule Examples.Schemas.HelloExample do
     end
   end
 
-  defp say_hello(name, _) do
+  def say_hello(name, _) do
     {:ok, [:string], ["Hello #{name}"]}
   end
 end

@@ -386,9 +386,9 @@ defmodule ExDBus.Schema do
     ast
   end
 
-  defp process_annotation({:annotation, _meta, []}, _parent, _caller) do
-    raise "Annotation definition requires 2 arguments"
-  end
+  # defp process_annotation({:annotation, _meta, []}, _parent, _caller) do
+  #   raise "Annotation definition requires 2 arguments"
+  # end
 
   defp process_annotation({:annotation, _meta, [do: _block]}, _parent, _caller) do
     raise "Annotation definition does not support blocks"

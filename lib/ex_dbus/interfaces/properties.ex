@@ -32,16 +32,10 @@ defmodule ExDBus.Interfaces.Properties do
     end
   end
 
-  def get({interface_name, property_name}, %{node: object} = state) do
-    with {:ok, interface} <- find_interface(object, interface_name),
-         {:ok, property} <- find_property(interface, property_name),
-         {:ok, getter} <- can_read(property) do
-      call_getter(getter, property_name, property)
-    end
-  end
-
-  def get_all(interface_name, %{node: object} = state) do
+  def get_all(interface_name, %{node: object} = context) do
     with {:ok, interface} <- find_interface(object, interface_name) do
+      context = Map.merge(context, %{interface: interface})
+
       values =
         interface
         |> Tree.get_properties()
@@ -55,7 +49,7 @@ defmodule ExDBus.Interfaces.Properties do
         end)
         |> Enum.filter(&elem(&1, 0))
         |> Enum.reduce([], fn {_, name, getter, property}, values ->
-          case call_getter(getter, name, property) do
+          case call_getter(getter, interface_name, name, property, context) do
             {:ok, [reply_type], [value]} ->
               value = {:dbus_variant, reply_type, value}
               [{name, value} | values]
@@ -69,13 +63,21 @@ defmodule ExDBus.Interfaces.Properties do
     end
   end
 
-  def set({interface_name, property_name, value}, %{node: object} = state) do
+  def get({interface_name, property_name}, %{node: object} = context) do
+    with {:ok, interface} <- find_interface(object, interface_name),
+         {:ok, property} <- find_property(interface, property_name),
+         {:ok, getter} <- can_read(property) do
+      context = Map.merge(context, %{property: property, interface: interface})
+      call_getter(getter, interface_name, property_name, property, context)
+    end
+  end
+
+  def set({interface_name, property_name, value}, %{node: object} = context) do
     with {:ok, interface} <- find_interface(object, interface_name),
          {:ok, property} <- find_property(interface, property_name),
          {:ok, setter} <- can_write(property) do
-      state = Map.merge(state, %{property: property, interface: interface})
-
-      call_setter(setter, property_name, value, property)
+      context = Map.merge(context, %{property: property, interface: interface})
+      call_setter(setter, interface_name, property_name, value, property, context)
     end
   end
 
@@ -101,36 +103,84 @@ defmodule ExDBus.Interfaces.Properties do
     end
   end
 
-  defp can_read(property) do
-    case Tree.property_access(property) do
-      access when access in [:read, :readwrite] ->
-        getter = Tree.property_getter(property)
+  defp call_getter({:call, pid, method_name}, interface_name, property_name, property, context) do
+    getter = fn property_name ->
+      GenServer.call(pid, {method_name, property_name})
+    end
 
-        case getter do
-          getter when is_function(getter) ->
-            {:ok, getter}
+    call_getter(getter, interface_name, property_name, property, context)
+  end
 
-          {:call, _pid, _method_name} = getter ->
-            {:ok, getter}
+  defp call_getter(getter, _interface_name, property_name, property, _context)
+       when is_function(getter) do
+    reply_type = unmarshal_type(Tree.property_type(property))
 
-          _ ->
-            {:error, "org.freedesktop.DBus.Error.NotSupported", "Failed to read property"}
-        end
+    try do
+      getter.(property_name)
+    rescue
+      e ->
+        {:error, "org.freedesktop.DBus.Error.Failed", Exception.message(e)}
+    else
+      {:ok, value} ->
+        {:ok, reply_type, [value]}
 
-      _ ->
-        {:error, "org.freedesktop.DBus.Error.AccessDenied", "The property is not readable"}
+      {:error, type, message} ->
+        {:error, type, message}
+
+      {:error, message} ->
+        {:error, "org.freedesktop.DBus.Error.Failed", message}
+
+      value ->
+        {:ok, reply_type, [value]}
     end
   end
 
-  defp call_setter({:call, pid, method_name}, property_name, value, property) do
+  defp call_getter(
+         nil,
+         interface_name,
+         property_name,
+         _property,
+         %{
+           path: path,
+           router: router
+         } = context
+       )
+       when not is_nil(router) do
+    try do
+      router.get_property(path, interface_name, property_name, context)
+    rescue
+      _error ->
+        {:error, "org.freedesktop.DBus.Error.NotSupported", "Failed to read property"}
+    else
+      :skip ->
+        {:error, "org.freedesktop.DBus.Error.NotSupported", "Failed to read property"}
+
+      result ->
+        result
+    end
+  end
+
+  defp call_getter(_, _, _, _, _) do
+    {:error, "org.freedesktop.DBus.Error.NotSupported", "Failed to read property"}
+  end
+
+  defp call_setter(
+         {:call, pid, method_name},
+         interface_name,
+         property_name,
+         value,
+         property,
+         context
+       ) do
     setter = fn property_name, value ->
       GenServer.call(pid, {method_name, property_name, value})
     end
 
-    call_setter(setter, property_name, value, property)
+    call_setter(setter, interface_name, property_name, value, property, context)
   end
 
-  defp call_setter(setter, property_name, value, property) do
+  defp call_setter(setter, _interface_name, property_name, value, property, _context)
+       when is_function(setter) do
     reply_type = unmarshal_type(Tree.property_type(property))
 
     try do
@@ -156,52 +206,50 @@ defmodule ExDBus.Interfaces.Properties do
     end
   end
 
-  defp call_getter({:call, pid, method_name}, property_name, property) do
-    getter = fn property_name ->
-      GenServer.call(pid, {method_name, property_name})
-    end
+  defp call_setter(
+         nil,
+         interface_name,
+         property_name,
+         value,
+         _property,
+         %{
+           path: path,
+           router: router
+         } = context
+       )
+       when not is_nil(router) do
+    try do
+      router.set_property(path, interface_name, property_name, value, context)
+    rescue
+      _error ->
+        {:error, "org.freedesktop.DBus.Error.NotSupported", "Failed to write property"}
+    else
+      :skip ->
+        {:error, "org.freedesktop.DBus.Error.NotSupported", "Failed to write property"}
 
-    call_getter(getter, property_name, property)
+      result ->
+        result
+    end
   end
 
-  defp call_getter(getter, property_name, property) do
-    reply_type = unmarshal_type(Tree.property_type(property))
+  defp call_setter(_, _, _, _, _, _) do
+    {:error, "org.freedesktop.DBus.Error.NotSupported", "Failed to set property"}
+  end
 
-    try do
-      getter.(property_name)
-    rescue
-      e ->
-        {:error, "org.freedesktop.DBus.Error.Failed", Exception.message(e)}
-    else
-      {:ok, value} ->
-        {:ok, reply_type, [value]}
+  defp can_read(property) do
+    case Tree.property_access(property) do
+      access when access in [:read, :readwrite] ->
+        {:ok, Tree.property_getter(property)}
 
-      {:error, type, message} ->
-        {:error, type, message}
-
-      {:error, message} ->
-        {:error, "org.freedesktop.DBus.Error.Failed", message}
-
-      value ->
-        {:ok, reply_type, [value]}
+      _ ->
+        {:error, "org.freedesktop.DBus.Error.AccessDenied", "The property is not readable"}
     end
   end
 
   defp can_write(property) do
     case Tree.property_access(property) do
       access when access in [:write, :readwrite] ->
-        setter = Tree.property_setter(property)
-
-        case setter do
-          setter when is_function(setter) ->
-            {:ok, setter}
-
-          {:call, pid, method_name} = setter ->
-            {:ok, setter}
-
-          _ ->
-            {:error, "org.freedesktop.DBus.Error.NotSupported", "Failed to set property"}
-        end
+        {:ok, Tree.property_setter(property)}
 
       _ ->
         {:error, "org.freedesktop.DBus.Error.PropertyReadOnly", "The property is read-only"}

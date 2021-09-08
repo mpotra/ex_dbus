@@ -249,7 +249,7 @@ defmodule ExDBus.Tree do
         {:interface, _, _} = interface
       )
       when is_binary(interface_name) do
-    case Builder.Finder.find_index(object, {:interface, interface_name, nil}) do
+    case Builder.Finder.find_index(object, {:interface, interface_name, []}) do
       {-1, _} ->
         :error
 
@@ -266,7 +266,7 @@ defmodule ExDBus.Tree do
   end
 
   def replace_interface_at(
-        {:object, object_name, children} = object,
+        {:object, _object_name, _children} = object,
         search_path,
         {:interface, interface_name, _} = replace_interface
       )
@@ -279,7 +279,7 @@ defmodule ExDBus.Tree do
           child, {true, _, _} = acc ->
             {child, acc}
 
-          {:object, name, _} = child, {_, _, paths} = acc ->
+          {:object, name, _} = child, {_, _, paths} = _acc ->
             {child, {false, nil, [name | paths]}}
 
           {:interface, name, _} = interface, {false, nil, paths} = acc ->
@@ -298,7 +298,7 @@ defmodule ExDBus.Tree do
           child, {true, _, _} = acc ->
             {child, acc}
 
-          {:object, _, _} = child, {_, _, paths} = acc ->
+          {:object, _, _} = child, {_, _, paths} = _acc ->
             [_ | paths] = paths
             {child, {false, nil, paths}}
 
@@ -308,7 +308,7 @@ defmodule ExDBus.Tree do
       )
 
     case result do
-      {true, old_interface, _} -> {:ok, object}
+      {true, _old_interface, _} -> {:ok, object}
       {false, _, _} -> :error
     end
   end
@@ -326,6 +326,7 @@ defmodule ExDBus.Tree do
     Builder.Finder.find_method(interface, method, signature)
   end
 
+  @spec get_method_callback(method()) :: :error | nil | {:ok, method_handle()}
   def get_method_callback({:method, _, _, callback}) when is_function(callback) do
     {:ok, callback}
   end
@@ -334,10 +335,15 @@ defmodule ExDBus.Tree do
     {:ok, callback}
   end
 
+  def get_method_callback({:method, _, _, nil}) do
+    nil
+  end
+
   def get_method_callback(_) do
     :error
   end
 
+  @spec set_method_callback(method(), method_handle()) :: nil | method()
   def set_method_callback({:method, name, children, _}, callback) do
     {:method, name, children, callback}
   end
@@ -347,9 +353,9 @@ defmodule ExDBus.Tree do
   end
 
   # Property function
-  @spec find_property(interface(), binary()) :: find_result(property())
+  @spec find_property(interface(), String.t()) :: find_result(property())
   def find_property({:interface, _, _} = interface, property_name) do
-    Builder.Finder.find(interface, {:property, property_name, nil, nil, nil, nil})
+    Builder.Finder.find(interface, {:property, property_name, nil, :readwrite, [], nil})
   end
 
   def get_properties({:interface, _, members}) do
@@ -368,10 +374,12 @@ defmodule ExDBus.Tree do
     access
   end
 
+  @spec property_getter(property()) :: property_getter()
   def property_getter({:property, _, _, _, _, {getter, _}}) do
     getter
   end
 
+  @spec property_setter(property()) :: property_setter()
   def property_setter({:property, _, _, _, _, {_, setter}}) do
     setter
   end

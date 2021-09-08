@@ -160,7 +160,8 @@ defmodule ExDBus.Builder.Finder do
     |> Enum.join("")
   end
 
-  @spec find_method(interface(), binary(), {list() | :any, list() | :any}) :: method()
+  @spec find_method(interface(), binary(), {list() | :any, list() | :any}) ::
+          :error | {:ok, method()}
   def find_method(interface, method_name, search_signature) do
     case find_methods(interface, method_name) do
       [] ->

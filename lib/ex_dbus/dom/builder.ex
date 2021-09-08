@@ -92,7 +92,7 @@ defmodule ExDBus.Builder do
     end
   end
 
-  @spec method(name()) :: {:ok, method()} | {:error, binary()}
+  @spec method(name()) :: {:ok, method()}
   def method(name) do
     {:ok, {:method, name, [], nil}}
   end
@@ -125,7 +125,7 @@ defmodule ExDBus.Builder do
     {:ok, {:argument, name, type, direction, []}}
   end
 
-  @spec argument!(name(), dbus_type(), direction()) :: annotation()
+  @spec argument!(name(), dbus_type(), direction()) :: argument()
   def argument!(name, type, direction \\ :out) do
     with {:ok, argument} <- argument(name, type, direction) do
       argument
