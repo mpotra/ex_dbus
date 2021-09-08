@@ -67,7 +67,12 @@ defmodule ExDBus.Interfaces.Properties do
     with {:ok, interface} <- find_interface(object, interface_name),
          {:ok, property} <- find_property(interface, property_name),
          {:ok, getter} <- can_read(property) do
-      context = Map.merge(context, %{property: property, interface: interface})
+      context =
+        Map.merge(context, %{
+          property: property,
+          interface: interface
+        })
+
       call_getter(getter, interface_name, property_name, property, context)
     end
   end
@@ -139,7 +144,7 @@ defmodule ExDBus.Interfaces.Properties do
          nil,
          interface_name,
          property_name,
-         _property,
+         property,
          %{
            path: path,
            router: router
@@ -147,7 +152,7 @@ defmodule ExDBus.Interfaces.Properties do
        )
        when not is_nil(router) do
     try do
-      router.get_property(path, interface_name, property_name, context)
+      ExDBus.Router.Protocol.get_property(router, path, interface_name, property_name, context)
     rescue
       _error ->
         {:error, "org.freedesktop.DBus.Error.NotSupported", "Failed to read property"}
@@ -155,8 +160,12 @@ defmodule ExDBus.Interfaces.Properties do
       :skip ->
         {:error, "org.freedesktop.DBus.Error.NotSupported", "Failed to read property"}
 
-      result ->
-        result
+      {:error, _, _} = error ->
+        error
+
+      {:ok, value} ->
+        reply_type = unmarshal_type(Tree.property_type(property))
+        {:ok, reply_type, [value]}
     end
   end
 
@@ -211,7 +220,7 @@ defmodule ExDBus.Interfaces.Properties do
          interface_name,
          property_name,
          value,
-         _property,
+         property,
          %{
            path: path,
            router: router
@@ -219,7 +228,14 @@ defmodule ExDBus.Interfaces.Properties do
        )
        when not is_nil(router) do
     try do
-      router.set_property(path, interface_name, property_name, value, context)
+      ExDBus.Router.Protocol.set_property(
+        router,
+        path,
+        interface_name,
+        property_name,
+        value,
+        context
+      )
     rescue
       _error ->
         {:error, "org.freedesktop.DBus.Error.NotSupported", "Failed to write property"}
@@ -227,8 +243,12 @@ defmodule ExDBus.Interfaces.Properties do
       :skip ->
         {:error, "org.freedesktop.DBus.Error.NotSupported", "Failed to write property"}
 
-      result ->
-        result
+      {:error, _, _} = error ->
+        error
+
+      {:ok, value} ->
+        reply_type = unmarshal_type(Tree.property_type(property))
+        {:ok, reply_type, [value]}
     end
   end
 

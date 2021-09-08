@@ -1,7 +1,8 @@
 defmodule MyIcon.Config do
   use GenServer
-  alias ExDBus.Tree
+  # alias ExDBus.Tree
 
+  @impl true
   def init(%{} = props) do
     {:ok, props}
   end
@@ -137,7 +138,7 @@ defmodule MyIcon.Config do
     {:reply, {:ok, [], []}, state}
   end
 
-  def handle_call({:method, method_name, args, context}, _from, state) do
+  def handle_call({:method, method_name, args, _context}, _from, state) do
     IO.inspect({method_name, args}, label: "[MyIcon.Config] METHOD call")
 
     {:reply,
@@ -147,6 +148,10 @@ defmodule MyIcon.Config do
 end
 
 defmodule MyIcon.Router do
+  use ExDBus.Router
+
+  defstruct []
+
   def method(path, interface, method, signature, args, context) do
     IO.inspect(
       [
@@ -202,7 +207,7 @@ defmodule MyIcon do
       ExDBus.Service.start_link(
         name,
         DBusTrayIcon.IconSchema,
-        router: MyIcon.Router
+        router: %MyIcon.Router{}
       )
 
     bus = ExDBus.Service.get_bus(service)
@@ -270,7 +275,7 @@ defmodule MyIcon do
   #   {:reply, setup_interface(state), state}
   # end
 
-  def handle_call(:register_icon, from, %{service: service, name: service_name} = state) do
+  def handle_call(:register_icon, _from, %{service: service, name: service_name} = state) do
     reply =
       GenServer.call(service, {
         :call_method,
@@ -285,17 +290,17 @@ defmodule MyIcon do
     {:reply, reply, state}
   end
 
-  def handle_call(request, from, state) do
+  def handle_call(_request, _from, state) do
     {:noreply, state}
   end
 
   @impl true
-  def handle_cast(request, state) do
+  def handle_cast(_request, state) do
     {:noreply, state}
   end
 
   @impl true
-  def handle_info(message, state) do
+  def handle_info(_message, state) do
     {:noreply, state}
   end
 
@@ -373,27 +378,6 @@ defmodule MyIcon do
       )
 
     :ok
-  end
-
-  # Generate icon
-  def gen_icon(width, height) do
-    lines = height
-
-    Enum.reduce(0..width, [], fn _, buf ->
-      add_line(buf, {155, 255, 0, 255}, height)
-    end)
-  end
-
-  def add_line(buf, pixel, 0) do
-    buf
-  end
-
-  def add_line(buf, pixel, index) do
-    add_line(add_pixel(buf, pixel), pixel, index - 1)
-  end
-
-  def add_pixel(buf, {a, r, g, b}) do
-    [a | [r | [g | [b | buf]]]]
   end
 
   # def __register_icon(pid) do

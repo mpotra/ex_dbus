@@ -389,7 +389,7 @@ defmodule ExDBus.Service do
 
   defp route_method(router, path, interface, method, signature, args, context) do
     try do
-      router.method(path, interface, method, signature, args, context)
+      ExDBus.Router.Protocol.method(router, path, interface, method, signature, args, context)
     rescue
       _e ->
         {:error, "org.freedesktop.DBus.Error.UnknownMethod",

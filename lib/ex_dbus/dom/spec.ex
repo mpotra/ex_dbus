@@ -19,9 +19,9 @@ defmodule ExDBus.Spec do
           | {:call, pid(), atom()}
           | nil
   @type property_getter_return() ::
-          :skip | dbus_reply()
+          :skip | {:ok, any()} | dbus_reply_error()
   @type property_setter_return() ::
-          :skip | dbus_reply()
+          :skip | {:ok, any()} | dbus_reply_error()
   @type property_setter() ::
           (property_name :: String.t(), value :: any() -> property_setter_return)
           | {:call, pid(), atom()}

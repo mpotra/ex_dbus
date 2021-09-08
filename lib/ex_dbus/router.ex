@@ -1,6 +1,6 @@
 defmodule ExDBus.Router do
   alias ExDBus.Spec
-  @type return() :: Spec.dbus_reply() | :skip
+
   @callback method(
               path :: String.t(),
               interface :: String.t(),
@@ -9,14 +9,14 @@ defmodule ExDBus.Router do
               args :: list(),
               context :: map()
             ) ::
-              return()
+              Spec.method_handle_return() | :skip
   @callback get_property(
               path :: String.t(),
               interface :: String.t(),
               property :: String.t(),
               context :: map()
             ) ::
-              return()
+              Spec.property_getter_return() | :skip
   @callback set_property(
               path :: String.t(),
               interface :: String.t(),
@@ -24,11 +24,25 @@ defmodule ExDBus.Router do
               value :: any(),
               context :: map()
             ) ::
-              return()
+              Spec.property_setter_return() | :skip
 
   defmacro __using__(_opts) do
     quote do
       @behaviour ExDBus.Router
+
+      defimpl ExDBus.Router.Protocol, for: __MODULE__ do
+        def method(_, path, interface, method, signature, args, context) do
+          @for.method(path, interface, method, signature, args, context)
+        end
+
+        def get_property(_, path, interface, property, context) do
+          @for.get_property(path, interface, property, context)
+        end
+
+        def set_property(_, path, interface, property, value, context) do
+          @for.set_property(path, interface, property, value, context)
+        end
+      end
     end
   end
 end
