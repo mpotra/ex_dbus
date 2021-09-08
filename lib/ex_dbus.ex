@@ -13,7 +13,7 @@ defmodule ExDBus do
     IO.puts("Starting ExDBus Application")
 
     children = [
-      {MyIcon, name: MyIcon}
+      # {MyIcon, name: MyIcon}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
