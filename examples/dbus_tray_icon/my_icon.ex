@@ -205,8 +205,8 @@ defmodule MyIcon do
 
     {:ok, service} =
       ExDBus.Service.start_link(
-        name,
-        DBusTrayIcon.IconSchema,
+        name: name,
+        schema: DBusTrayIcon.IconSchema,
         router: %MyIcon.Router{}
       )
 

@@ -4,16 +4,24 @@ defmodule ExDBus.Service do
   alias ExDBus.Spec
   alias ErlangDBus.Message
 
-  def start_link(name, schema, init_opts \\ [], opts \\ []) do
+  def start_link(opts, gen_opts \\ []) do
     GenServer.start_link(
       __MODULE__,
-      Keyword.merge(init_opts,
-        name: name,
-        schema: schema
-      ),
-      opts
+      opts,
+      gen_opts
     )
   end
+
+  # def start_link(name, schema, init_opts \\ [], opts \\ []) do
+  #   GenServer.start_link(
+  #     __MODULE__,
+  #     Keyword.merge(init_opts,
+  #       name: name,
+  #       schema: schema
+  #     ),
+  #     opts
+  #   )
+  # end
 
   @impl true
   def init([_ | _] = opts) do
