@@ -4,149 +4,6 @@ defmodule ExDBus.Service do
   alias ExDBus.Spec
   alias ErlangDBus.Message
 
-  # defmacro __using__(opts) do
-  #   service_name = Keyword.get(opts, :service, nil)
-
-  #   quote do
-  #     use GenServer
-
-  #     @service_name unquote(service_name)
-  #     @schema __MODULE__
-
-  #     @before_compile ExDBus.Service
-
-  #     def start_link(opts) do
-  #       GenServer.start_link(
-  #         __MODULE__,
-  #         [
-  #           name: __service__(:name),
-  #           schema: __service__(:schema)
-  #         ],
-  #         opts
-  #       )
-  #     end
-
-  #     def register_object(path) do
-  #       GenServer.call(__MODULE__, {:register_object, path, __MODULE__})
-  #     end
-
-  #     def register_object(path, server_pid) when is_pid(server_pid) or is_atom(server_pid) do
-  #       GenServer.call(__MODULE__, {:register_object, path, server_pid})
-  #     end
-
-  #     def unregister_object(path) do
-  #       GenServer.call(__MODULE__, {:unregister_object, path})
-  #     end
-
-  #     def is_object_registered?(path) do
-  #       GenServer.call(__MODULE__, {:is_object_registered, path})
-  #     end
-
-  #     # def reply({pid, from}, reply) do
-  #     #   GenServer.cast(pid, {:reply, from, reply})
-  #     # end
-
-  #     # def signal(signal) do
-  #     #   signal(signal, [])
-  #     # end
-
-  #     # def signal(signal, args) do
-  #     #   signal(signal, args, [])
-  #     # end
-
-  #     # def signal(signal, args, options) do
-  #     #   IO.inspect("Sending signal #{signal}")
-  #     #   GenServer.cast(__MODULE__, {:signal, signal, args, options})
-  #     # end
-
-  #     # def test(p) do
-  #     #   GenServer.call(__MODULE__, {:test, p})
-  #     # end
-
-  #     @impl true
-  #     def init([_ | _] = opts) do
-  #       IO.inspect(self(), label: "INIT PID")
-  #       IO.inspect(opts, label: "INIT STACK")
-
-  #       service_name = Keyword.get(opts, :name, nil)
-  #       schema = Keyword.get(opts, :schema, nil)
-
-  #       if service_name == nil do
-  #         raise "Service requires the :name option"
-  #       end
-
-  #       if schema == nil do
-  #         raise "Service requires the :schema option"
-  #       end
-
-  #       root = ExDBus.Service.get_root(schema)
-
-  #       {:ok, {bus, service}} = register_service(self(), service_name)
-
-  #       state = %{
-  #         name: service_name,
-  #         root: root,
-  #         bus: bus,
-  #         service: service,
-  #         server: self(),
-  #         registered_objects: %{}
-  #       }
-
-  #       register_objects(self(), state)
-
-  #       {:ok, state}
-  #     end
-
-  #     @impl true
-  #     def handle_call(request, from, state) do
-  #       IO.inspect(from, label: "[CALL] Message from")
-  #       IO.inspect(request, label: "[CALL] Message request")
-  #       {:noreply, state}
-  #     end
-
-  #     @impl true
-  #     def handle_cast(request, state) do
-  #       IO.inspect(request, label: "[CAST] Request")
-  #       {:noreply, state}
-  #     end
-
-  #     @impl true
-  #     def handle_info(message, state) do
-  #       IO.inspect(message, label: "----[INFO]-----")
-  #       state = ExDBus.Service.handle_info(message, state, &dbus_method_call/2)
-  #       {:noreply, state}
-  #     end
-
-  #     defp register_service(pid, service_name) do
-  #       ExDBus.Service.register_service(pid, service_name)
-  #     end
-
-  #     defp register_objects(pid, state) do
-  #       ExDBus.Service.register_objects(pid, state)
-  #     end
-
-  #     defp dbus_method_call(method, state) do
-  #       ExDBus.Service.dbus_method_call(method, state)
-  #     end
-
-  #     defoverridable register_service: 2,
-  #                    register_objects: 2,
-  #                    dbus_method_call: 2
-  #   end
-  # end
-
-  # defmacro __before_compile__(_env) do
-  #   quote do
-  #     def __service__(:name) do
-  #       @service_name
-  #     end
-
-  #     def __service__(:schema) do
-  #       @schema.__schema__()
-  #     end
-  #   end
-  # end
-
   def start_link(name, schema, init_opts \\ [], opts \\ []) do
     GenServer.start_link(
       __MODULE__,
@@ -192,8 +49,6 @@ defmodule ExDBus.Service do
       _ ->
         {:stop, "Could not register service"}
     end
-
-    #
   end
 
   def get_root(schema) when is_atom(schema) do
@@ -278,29 +133,29 @@ defmodule ExDBus.Service do
     end
   end
 
-  def handle_call({:introspect, destination, path}, from, %{bus: bus} = state) do
+  def handle_call({:introspect, destination, path}, _from, %{bus: bus} = state) do
     reply = GenServer.call(bus, {:introspect, destination, path})
     {:reply, reply, state}
   end
 
-  def handle_call({:find_object, destination, path}, from, %{bus: bus} = state) do
+  def handle_call({:find_object, destination, path}, _from, %{bus: bus} = state) do
     reply = GenServer.call(bus, {:find_object, destination, path})
     {:reply, reply, state}
   end
 
-  def handle_call({:has_object, destination, path}, from, %{bus: bus} = state) do
+  def handle_call({:has_object, destination, path}, _from, %{bus: bus} = state) do
     reply = GenServer.call(bus, {:has_object, destination, path})
     {:reply, reply, state}
   end
 
-  def handle_call({:has_interface, destination, path, interface}, from, %{bus: bus} = state) do
+  def handle_call({:has_interface, destination, path, interface}, _from, %{bus: bus} = state) do
     reply = GenServer.call(bus, {:has_interface, destination, path, interface})
     {:reply, reply, state}
   end
 
   def handle_call(
         {:call_method, destination, path, interface, method, {signature, types, body}},
-        from,
+        _from,
         %{bus: bus} = state
       ) do
     reply =
