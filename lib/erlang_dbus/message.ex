@@ -105,7 +105,7 @@ defmodule ErlangDBus.Message do
     end
   end
 
-  @spec return(dbus_message(), String.t(), String.t()) :: dbus_message() | dbus_error()
+  @spec error(dbus_message(), String.t(), String.t()) :: dbus_message() | dbus_error()
   def error(msg, name, message) do
     try do
       :dbus_message.error(msg, name, message)
@@ -114,6 +114,44 @@ defmodule ErlangDBus.Message do
     else
       msg -> msg
     end
+  end
+
+  @spec signal(
+          destination :: nil | String.t(),
+          path :: String.t(),
+          interface :: String.t(),
+          signal :: String.t(),
+          {signature :: String.t() | nil, types :: list(), args :: list()}
+        ) :: {:ok, dbus_message()}
+  def signal(_destination, path, interface, signal, {_, [], []}) do
+    {body, _pos} = :dbus_marshaller.marshal_list([], [])
+
+    fields = [
+      {1, {:dbus_variant, :object_path, path}},
+      {2, {:dbus_variant, :string, interface}},
+      {3, {:dbus_variant, :string, signal}}
+      #  {8,}, # FIELD_SIGNATURE
+      #  {6, } # FIELD_DESTINATION
+    ]
+
+    header = {:dbus_header, ?l, 4, 0, 1, 0, :undefined, fields}
+
+    {:ok, {:dbus_message, header, body}}
+  end
+
+  def signal(_destination, path, interface, signal, {signature, types, args}) do
+    {body, _pos} = :dbus_marshaller.marshal_list(types, args)
+
+    fields = [
+      {1, {:dbus_variant, :object_path, path}},
+      {2, {:dbus_variant, :string, interface}},
+      {3, {:dbus_variant, :string, signal}},
+      {8, {:dbus_variant, :signature, signature}}
+    ]
+
+    header = {:dbus_header, ?l, 4, 0, 1, 0, :undefined, fields}
+
+    {:ok, {:dbus_message, header, body}}
   end
 
   defp _get_field(pos, message) do

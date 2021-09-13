@@ -12,17 +12,6 @@ defmodule ExDBus.Service do
     )
   end
 
-  # def start_link(name, schema, init_opts \\ [], opts \\ []) do
-  #   GenServer.start_link(
-  #     __MODULE__,
-  #     Keyword.merge(init_opts,
-  #       name: name,
-  #       schema: schema
-  #     ),
-  #     opts
-  #   )
-  # end
-
   @impl true
   def init([_ | _] = opts) do
     service_name = Keyword.get(opts, :name, nil)
@@ -75,6 +64,14 @@ defmodule ExDBus.Service do
     GenServer.call(service_pid, :get_bus)
   end
 
+  def get_router(service_pid) do
+    GenServer.call(service_pid, :get_router)
+  end
+
+  def set_router(service_pid, router) do
+    GenServer.call(service_pid, {:set_router, router})
+  end
+
   def register_object(service_pid, path) do
     GenServer.call(service_pid, {:register_object, path, service_pid})
   end
@@ -94,6 +91,14 @@ defmodule ExDBus.Service do
 
   def call_method(pid, bus, path, interface, method, args) do
     GenServer.call(pid, {:call_method, bus, path, interface, method, args})
+  end
+
+  def send_signal(pid, path, interface, signal) do
+    GenServer.cast(pid, {:send_signal, path, interface, signal})
+  end
+
+  def send_signal(pid, path, interface, signal, {signature, types, args}) do
+    GenServer.cast(pid, {:send_signal, path, interface, signal, {signature, types, args}})
   end
 
   defp __register_object(%{registered_objects: objects} = state, path, pid) do
@@ -127,6 +132,14 @@ defmodule ExDBus.Service do
   @impl true
   def handle_call(:get_bus, _from, %{bus: bus} = state) do
     {:reply, bus, state}
+  end
+
+  def handle_call(:get_router, _from, %{router: router} = state) do
+    {:reply, {:ok, router}, state}
+  end
+
+  def handle_call({:set_router, router}, _from, state) do
+    {:reply, {:ok, router}, Map.put(state, :router, router)}
   end
 
   def handle_call({:get_object, path}, _from, %{root: root} = state) do
@@ -254,6 +267,34 @@ defmodule ExDBus.Service do
   # handle_cast
 
   @impl true
+  def handle_cast(
+        {:send_signal, path, interface, signal},
+        %{bus: bus} = state
+      ) do
+    GenServer.cast(bus, {
+      :send_signal,
+      path,
+      interface,
+      signal
+    })
+
+    {:noreply, state}
+  end
+
+  def handle_cast(
+        {:send_signal, path, interface, signal, {signature, types, args}},
+        %{bus: bus} = state
+      ) do
+    GenServer.cast(bus, {
+      :send_signal,
+      path,
+      interface,
+      signal,
+      {signature, types, args}
+    })
+
+    {:noreply, state}
+  end
 
   def handle_cast(request, state) do
     IO.inspect(request, label: "[CAST] Request")
@@ -264,7 +305,6 @@ defmodule ExDBus.Service do
 
   @impl true
   def handle_info({:dbus_method_call, msg, conn} = instr, state) do
-    IO.inspect(msg, label: "----[INFO dbus_method_call]-----")
     path = Message.get_field(:path, msg)
 
     case __get_registered_object(state, path) do

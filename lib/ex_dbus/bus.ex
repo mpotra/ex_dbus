@@ -233,6 +233,23 @@ defmodule ExDBus.Bus do
     {:reply, result, state}
   end
 
+  @impl true
+  def handle_cast(
+        {:send_signal, path, interface, signal},
+        %{status: :connected, connection: conn} = state
+      ) do
+    send_signal(conn, path, interface, signal)
+    {:noreply, state}
+  end
+
+  def handle_cast(
+        {:send_signal, path, interface, signal, {signature, types, args}},
+        %{status: :connected, connection: conn} = state
+      ) do
+    send_signal(conn, path, interface, signal, {signature, types, args})
+    {:noreply, state}
+  end
+
   #
   # Private functions
   #
@@ -319,6 +336,38 @@ defmodule ExDBus.Bus do
 
             {:error, {error_name, body}}
         end
+    end
+  end
+
+  defp send_signal(conn, path, interface, signal) do
+    send_signal(conn, path, interface, signal, nil)
+  end
+
+  defp send_signal(conn, path, interface, signal, {signature, types, args}) do
+    send_signal(conn, path, interface, signal, {signature, types, args}, nil)
+  end
+
+  defp send_signal(conn, path, interface, signal, destination) do
+    send_signal(conn, path, interface, signal, {nil, [], []}, destination)
+  end
+
+  defp send_signal(conn, path, interface, signal, {signature, types, args}, destination) do
+    # Message = dbus_message:signal(undefined, Path, IfaceName, Signal, Args),
+    # signal = {:dbus_signal, signal, [], :none, :undefined, types, []}
+
+    try do
+      # :dbus_message.signal(destination, path, interface, signal, args)
+      ErlangDBus.Message.signal(destination, path, interface, signal, {signature, types, args})
+    rescue
+      e ->
+        IO.inspect(e, label: "Bus.send_signal error")
+        {:error, e}
+    else
+      {:ok, msg} ->
+        IO.inspect(msg, label: "SIGNAL MSG READY")
+
+        :dbus_connection.cast(conn, msg)
+        |> IO.inspect(label: "dbus_connection.cast result")
     end
   end
 
