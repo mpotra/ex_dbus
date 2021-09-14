@@ -19,32 +19,47 @@ defmodule ExDBus.Service do
     server = Keyword.get(opts, :server, nil)
     router = Keyword.get(opts, :router, nil)
 
-    if service_name == nil do
-      # raise "Service requires the :name option"
-    end
+    # if service_name == nil do
+    #   # raise "Service requires the :name option"
+    # end
 
     if schema == nil do
-      # raise "Service requires the :schema option"
+      raise "Service requires the :schema option"
     end
 
     root = get_root(schema)
 
-    case register_service(self(), service_name) do
-      {:ok, {bus, service}} ->
-        state = %{
-          name: service_name,
-          root: root,
-          bus: bus,
-          service: service,
-          server: server,
-          registered_objects: %{},
-          router: router
-        }
+    state = %{
+      name: service_name,
+      root: root,
+      bus: nil,
+      service: nil,
+      server: server,
+      registered_objects: %{},
+      router: router
+    }
+
+    case connect_bus(self()) do
+      {:ok, bus} ->
+        state = Map.put(state, :bus, bus)
+
+        if service_name != nil do
+          case register_name(bus, service_name) do
+            :ok ->
+              {:ok, state}
+
+            error ->
+              ExDBus.Bus.close(bus)
+              {:stop, error}
+          end
+        else
+          {:ok, state}
+        end
 
         {:ok, state}
 
-      _ ->
-        {:stop, "Could not register service"}
+      error ->
+        {:stop, error}
     end
   end
 
@@ -62,6 +77,16 @@ defmodule ExDBus.Service do
 
   def get_bus(service_pid) do
     GenServer.call(service_pid, :get_bus)
+  end
+
+  @spec get_name(pid()) :: nil | String.t()
+  def get_name(service_pid) do
+    GenServer.call(service_pid, :get_name)
+  end
+
+  @spec get_dbus_pid(pid()) :: {:ok, String.t()} | {:error, any()}
+  def get_dbus_pid(service_pid) do
+    GenServer.call(service_pid, :get_dbus_pid)
   end
 
   def get_router(service_pid) do
@@ -130,8 +155,21 @@ defmodule ExDBus.Service do
   # handle_call
 
   @impl true
+  def handle_call(:get_name, _from, %{name: name} = state) do
+    {:reply, name, state}
+  end
+
   def handle_call(:get_bus, _from, %{bus: bus} = state) do
     {:reply, bus, state}
+  end
+
+  def handle_call(:get_dbus_pid, _from, %{bus: bus} = state) when is_pid(bus) do
+    reply = ExDBus.Bus.get_dbus_pid(bus)
+    {:reply, reply, state}
+  end
+
+  def handle_call(:get_dbus_pid, _from, state) do
+    {:reply, {:error, "No DBUS bus service running"}, state}
   end
 
   def handle_call(:get_router, _from, %{router: router} = state) do
@@ -422,12 +460,23 @@ defmodule ExDBus.Service do
     end
   end
 
-  @spec register_service(any, any) :: {:ok, {pid(), pid()}} | :ignore | {:error, any}
-  def register_service(pid, service_name) do
+  # @spec register_service(pid(), String.t()) :: {:ok, {pid(), pid()}} | :ignore | {:error, any}
+  # def register_service(service_pid, service_name) do
+  #   with {:ok, bus} <- ExDBus.Bus.start_link(:session),
+  #        :ok <- ExDBus.Bus.connect(bus, service_pid),
+  #        :ok <- ExDBus.Bus.register_name(bus, service_name) do
+  #     {:ok, {service_pid, bus}}
+  #   end
+  # end
+
+  defp register_name(bus, service_name) do
+    ExDBus.Bus.register_name(bus, service_name)
+  end
+
+  defp connect_bus(service_pid) do
     with {:ok, bus} <- ExDBus.Bus.start_link(:session),
-         :ok <- ExDBus.Bus.connect(bus, pid),
-         :ok <- ExDBus.Bus.register_service(bus, service_name, nil) do
-      {:ok, {bus, pid}}
+         :ok <- ExDBus.Bus.connect(bus, service_pid) do
+      {:ok, bus}
     end
   end
 

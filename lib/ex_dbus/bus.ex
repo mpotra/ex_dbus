@@ -27,9 +27,28 @@ defmodule ExDBus.Bus do
     GenServer.start_link(__MODULE__, bus_id, opts)
   end
 
-  @spec connect(bus_pid() | module(), pid() | nil | String.t()) ::
+  @spec connect(bus_pid() | bus_id() | module(), pid() | nil | String.t()) ::
           :ok | :ignore | {:error, term()}
-  def connect(bus_pid \\ __MODULE__, service \\ nil) do
+  def connect(bus_pid \\ __MODULE__, service \\ nil)
+
+  def connect(bus_id, service) when bus_id in [:session, :system] do
+    case start_link(bus_id) do
+      {:ok, bus_pid} ->
+        case connect(bus_pid, service) do
+          :ok ->
+            {:ok, bus_pid}
+
+          error ->
+            GenServer.stop(bus_pid, :normal, 0)
+            error
+        end
+
+      error ->
+        error
+    end
+  end
+
+  def connect(bus_pid, service) do
     GenServer.call(bus_pid, {:connect, service})
   end
 
@@ -73,6 +92,16 @@ defmodule ExDBus.Bus do
       {:ok, true} -> true
       _ -> false
     end
+  end
+
+  @spec register_name(pid(), String.t()) :: :ok | {:error, any()}
+  def register_name(bus_pid, service_name) do
+    GenServer.call(bus_pid, {:register_name, service_name})
+  end
+
+  @spec get_dbus_pid(pid()) :: {:ok, String.t()} | {:error, any()}
+  def get_dbus_pid(bus_pid) do
+    GenServer.call(bus_pid, :get_dbus_pid)
   end
 
   # GenServer implementation
@@ -176,42 +205,42 @@ defmodule ExDBus.Bus do
   end
 
   def handle_call(
-        {:register_service, service_name, _service_pid},
+        {:register_name, service_name},
         _from,
-        %{bus: _bus, connection: connection, status: :connected} = state
+        %{bus: _bus, connection: conn, status: :connected} = state
       ) do
-    # msg =
-    #   :dbus_message.call(
-    #     "org.freedesktop.DBus",
-    #     "/",
-    #     "org.freedesktop.DBus",
-    #     "RequestName"
-    #   )
-
-    # case :dbus_message.set_body("su", [:string, :uint32], [service_name, 0], msg) do
-    #   {:error, _} = error -> {:reply, error, state}
-    #   msg -> :dbus_connection.call(connection, msg)
+    #     with msg <-
+    #       :dbus_message.call(
+    #         "org.freedesktop.DBus",
+    #         "/",
+    #         "org.freedesktop.DBus",
+    #         "RequestName"
+    #       ),
+    #     {:dbus_message, _, _} = msg <-
+    #       :dbus_message.set_body("su", [:string, :uint32], [service_name, 0], msg),
+    #     {:ok, _} <- :dbus_connection.call(conn, msg) do
+    #  {:reply, :ok, state}
+    # else
+    #  error -> {:reply, error, state}
     # end
-    #
-    # {:reply, :ok, state}
 
-    with msg <-
-           :dbus_message.call(
-             "org.freedesktop.DBus",
-             "/",
-             "org.freedesktop.DBus",
-             "RequestName"
-           ),
-         {:dbus_message, _, _} = msg <-
-           :dbus_message.set_body("su", [:string, :uint32], [service_name, 0], msg),
-         {:ok, _} <- :dbus_connection.call(connection, msg) do
-      {:reply, :ok, state}
-    else
+    reply =
+      call_method(
+        "org.freedesktop.DBus",
+        "/",
+        "org.freedesktop.DBus",
+        "RequestName",
+        {"su", [:string, :uint32], [service_name, 0]},
+        conn
+      )
+
+    case reply do
+      {:ok, _} -> {:reply, :ok, state}
       error -> {:reply, error, state}
     end
   end
 
-  def handle_call({:register_service, _name, _pid}, _from, state) do
+  def handle_call({:register_name, _name}, _from, state) do
     {:reply, {:error, "Bus not connected"}, state}
   end
 
@@ -231,6 +260,15 @@ defmodule ExDBus.Bus do
     result = _list_names(conn)
 
     {:reply, result, state}
+  end
+
+  def handle_call(:get_dbus_pid, _from, %{status: :connected, connection: conn} = state) do
+    ret = :dbus_bus_connection.get_unique_name(conn)
+    {:reply, ret, state}
+  end
+
+  def handle_call(_, _from, state) do
+    {:reply, {:error, "Bus not connected"}, state}
   end
 
   @impl true
@@ -360,14 +398,10 @@ defmodule ExDBus.Bus do
       ErlangDBus.Message.signal(destination, path, interface, signal, {signature, types, args})
     rescue
       e ->
-        IO.inspect(e, label: "Bus.send_signal error")
         {:error, e}
     else
       {:ok, msg} ->
-        IO.inspect(msg, label: "SIGNAL MSG READY")
-
         :dbus_connection.cast(conn, msg)
-        |> IO.inspect(label: "dbus_connection.cast result")
     end
   end
 
