@@ -357,7 +357,7 @@ defmodule ExDBus.Bus do
   defp call_method(destination, path, interface, method, {signature, types, body}, conn) do
     msg = :dbus_message.call(destination, path, interface, method)
 
-    case :dbus_message.set_body(signature, types, body, msg) do
+    case ErlangDBus.Message.set_body(signature, types, body, msg) do
       {:error, _} = error ->
         error
 

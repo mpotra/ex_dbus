@@ -99,7 +99,8 @@ defmodule ErlangDBus.Message do
     try do
       :dbus_message.return(msg, types, values)
     rescue
-      e -> {:error, "org.freedesktop.DBus.Error.Failed", e.message}
+      e ->
+        {:error, "org.freedesktop.DBus.Error.Failed", "#{inspect(e)}"}
     else
       msg -> msg
     end
@@ -110,7 +111,7 @@ defmodule ErlangDBus.Message do
     try do
       :dbus_message.error(msg, name, message)
     rescue
-      e -> {:error, "org.freedesktop.DBus.Error.Failed", e.message}
+      e -> {:error, "org.freedesktop.DBus.Error.Failed", "#{inspect(e)}"}
     else
       msg -> msg
     end
@@ -152,6 +153,24 @@ defmodule ErlangDBus.Message do
     header = {:dbus_header, ?l, 4, 0, 1, 0, :undefined, fields}
 
     {:ok, {:dbus_message, header, body}}
+  end
+
+  def set_field({:dbus_message, header, body}, field) do
+    header = set_field(header, field)
+    {:dbus_message, header, body}
+  end
+
+  def set_field({:dbus_header, endian, type, flags, version, size, serial, fields}, field) do
+    fields = [field | fields]
+    {:dbus_header, endian, type, flags, version, size, serial, fields}
+  end
+
+  def set_body(signature, [_ | _] = types, body, msg) do
+    :dbus_message.set_body(signature, types, body, msg)
+  end
+
+  def set_size({:dbus_header, endian, type, flags, version, _, serial, fields}, size) do
+    {:dbus_header, endian, type, flags, version, size, serial, fields}
   end
 
   defp _get_field(pos, message) do
