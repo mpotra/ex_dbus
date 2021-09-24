@@ -228,23 +228,6 @@ defmodule ExDBus.Service do
       })
 
     {:reply, reply, state}
-    # Msg = dbus_message:call(Service, Path, IfaceName, Method),
-    # case dbus_message:set_body(Method, Args, Msg) of
-    #     #dbus_message{}=M2 ->
-    #         case dbus_connection:call(Conn, M2) of
-    #             {ok, #dbus_message{body=undefined}} ->
-    #                 {reply, ok, State};
-    #             {ok, #dbus_message{body=Res}} ->
-    #                 {reply, {ok, Res}, State};
-    #             {error, #dbus_message{body=Body}=Ret} ->
-    #                 Code = dbus_message:get_field(?FIELD_ERROR_NAME, Ret),
-    #                 {reply, {throw, {binary_to_atom(Code, utf8), Body}}, State}
-    #         end;
-    #     {error, Err} ->
-    #         {reply, {error, Err}, State}
-    # end.
-
-    # :ok = :dbus_connection.cast(conn, msg)
   end
 
   def handle_call(
