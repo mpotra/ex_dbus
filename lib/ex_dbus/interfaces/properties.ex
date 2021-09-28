@@ -73,7 +73,13 @@ defmodule ExDBus.Interfaces.Properties do
           interface: interface
         })
 
-      call_getter(getter, interface_name, property_name, property, context)
+      case call_getter(getter, interface_name, property_name, property, context) do
+        {:ok, [type], [value]} ->
+          {:ok, [:variant], [{:dbus_variant, type, value}]}
+
+        other ->
+          other
+      end
     end
   end
 
