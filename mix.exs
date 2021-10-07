@@ -1,13 +1,18 @@
 defmodule ExDbus.MixProject do
   use Mix.Project
 
+  @github_link "https://github.com/mpotra/ex_dbus"
+
   def project do
     [
       app: :ex_dbus,
       version: "0.1.0",
-      elixir: "~> 1.11.3",
+      elixir: ">= 1.11.3",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
+      source_url: @github_link,
+      description: "Elixir implementation of D-Bus",
+      package: package(),
       deps: deps()
     ]
   end
@@ -25,8 +30,7 @@ defmodule ExDbus.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:dbus, git: "https://github.com/mpotra/erlang-dbus"},
-      # {:dbus, path: "../erlang-dbus"},
+      {:dbus, git: "https://github.com/mpotra/erlang-dbus.git"},
       {:saxy, "~> 1.4.0"},
 
       # Development dialyzer
@@ -38,7 +42,7 @@ defmodule ExDbus.MixProject do
     [
       maintainers: ["Mihai Potra"],
       licenses: ["MIT"],
-      links: %{github: "mpotra/ex_dbus"},
+      links: %{github: @github_link},
       files: ~w(lib LICENSE.md mix.exs README.md)
     ]
   end
