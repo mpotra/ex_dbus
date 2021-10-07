@@ -1,7 +1,7 @@
 defmodule ExDbus.MixProject do
   use Mix.Project
 
-  @github_link "https://github.com/mpotra/ex_dbus"
+  @source_url "https://github.com/mpotra/ex_dbus"
 
   def project do
     [
@@ -10,7 +10,7 @@ defmodule ExDbus.MixProject do
       elixir: ">= 1.11.3",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
-      source_url: @github_link,
+      source_url: @source_url,
       description: "Elixir implementation of D-Bus",
       package: package(),
       deps: deps()
@@ -41,8 +41,8 @@ defmodule ExDbus.MixProject do
   defp package do
     [
       maintainers: ["Mihai Potra"],
-      licenses: ["MIT"],
-      links: %{github: @github_link},
+      licenses: ["Apache-2.0"],
+      links: %{"GitHub" => @source_url},
       files: ~w(lib LICENSE.md mix.exs README.md)
     ]
   end
