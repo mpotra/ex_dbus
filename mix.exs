@@ -30,7 +30,7 @@ defmodule ExDbus.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:dbus, git: "https://github.com/mpotra/erlang-dbus.git"},
+      {:dbus, "~> 0.8.0", hex: :dbus_revived},
       {:saxy, "~> 1.4.0"},
 
       # Development dialyzer
