@@ -6,7 +6,7 @@ defmodule ExDbus.MixProject do
   def project do
     [
       app: :ex_dbus,
-      version: "0.1.0",
+      version: "0.1.1",
       elixir: ">= 1.11.3",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
@@ -30,7 +30,7 @@ defmodule ExDbus.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:dbus, "~> 0.8.0", hex: :dbus_revived},
+      {:dbus, "~> 0.8.0"},
       {:saxy, "~> 1.4.0"},
 
       # Development dialyzer
