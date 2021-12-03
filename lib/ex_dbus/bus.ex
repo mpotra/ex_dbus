@@ -1,8 +1,10 @@
 defmodule ExDBus.Bus do
   use GenServer
+  require Logger
+
   @type bus_pid() :: pid()
   @type bus_id() :: :session | :system
-  @type status() :: :init | :connected | :disconnected
+  @type status() :: :init | :connected | :disconnected | :failed
 
   defmodule State do
     alias ExDBus.Bus
@@ -11,14 +13,16 @@ defmodule ExDBus.Bus do
               connection: nil,
               bus: nil,
               service: nil,
-              status: :init
+              status: :init,
+              pending_monitor: nil
 
     @type t() :: %__MODULE__{
             id: Bus.bus_id(),
             connection: any(),
             bus: pid(),
             service: pid() | nil,
-            status: Bus.status()
+            status: Bus.status(),
+            pending_monitor: nil | tuple()
           }
   end
 
@@ -120,15 +124,10 @@ defmodule ExDBus.Bus do
   end
 
   @impl true
-  def handle_call({:connect, service}, _from, %{id: bus_id} = state) do
+  def handle_call({:connect, service}, from, %{id: bus_id} = state) do
     if can_connect?(state) do
-      case __connect(bus_id, service, state) do
-        {:ok, state} ->
-          {:reply, :ok, state}
-
-        error ->
-          {:reply, error, state}
-      end
+      state = __connect(bus_id, service, from, state)
+      {:noreply, state}
     else
       {:reply, {:error, "Unable to connect"}, state}
     end
@@ -209,21 +208,6 @@ defmodule ExDBus.Bus do
         _from,
         %{bus: _bus, connection: conn, status: :connected} = state
       ) do
-    #     with msg <-
-    #       :dbus_message.call(
-    #         "org.freedesktop.DBus",
-    #         "/",
-    #         "org.freedesktop.DBus",
-    #         "RequestName"
-    #       ),
-    #     {:dbus_message, _, _} = msg <-
-    #       :dbus_message.set_body("su", [:string, :uint32], [service_name, 0], msg),
-    #     {:ok, _} <- :dbus_connection.call(conn, msg) do
-    #  {:reply, :ok, state}
-    # else
-    #  error -> {:reply, error, state}
-    # end
-
     reply =
       call_method(
         "org.freedesktop.DBus",
@@ -288,35 +272,89 @@ defmodule ExDBus.Bus do
     {:noreply, state}
   end
 
+  @impl true
+
+  def handle_info(
+        {:dbus_connected, {:ok, connection}, from},
+        %{pending_monitor: {_pid, ref, from}} = state
+      ) do
+    Process.demonitor(ref)
+    state = %{state | connection: connection, status: :connected, pending_monitor: nil}
+    GenServer.reply(from, :ok)
+    {:noreply, state}
+  end
+
+  def handle_info({:dbus_connected, error, from}, %{pending_monitor: {_pid, ref, from}} = state) do
+    Process.demonitor(ref)
+    state = %{state | connection: nil, status: :failed, pending_monitor: nil}
+    GenServer.reply(from, error)
+    {:noreply, state}
+  end
+
+  def handle_info(
+        {:DOWN, ref, :process, pid, :normal},
+        %{pending_monitor: {pid, ref, _from}} = state
+      ) do
+    Process.demonitor(ref)
+    state = %{state | pending_monitor: nil}
+    {:noreply, state}
+  end
+
+  def handle_info(
+        {:DOWN, ref, :process, pid, reason},
+        %{pending_monitor: {pid, ref, from}} = state
+      ) do
+    Process.demonitor(ref)
+    GenServer.reply(from, {:error, "Failed to connect to D-Bus; reason: #{reason}"})
+    state = %{state | status: :failed, pending_monitor: nil}
+    {:noreply, state}
+  end
+
+  def handle_info(_, state) do
+    {:noreply, state}
+  end
+
   #
   # Private functions
   #
 
-  defp __connect(bus_id, service_name, state) when is_binary(service_name) do
+  defp __connect(bus_id, service_name, from, state) when is_binary(service_name) do
     case :dbus_service.start_link(service_name) do
-      {:ok, service_pid} -> __connect(bus_id, service_pid, state)
-      error -> error
+      {:ok, service_pid} ->
+        __connect(bus_id, service_pid, from, state)
+
+      error ->
+        GenServer.reply(from, error)
+        %{state | status: :failed}
     end
   end
 
-  defp __connect(bus_id, service_pid, state) when is_pid(service_pid) do
-    case :dbus_bus_connection.connect(bus_id, service_pid) do
-      {:ok, connection} ->
-        {:ok, %{state | connection: connection, service: service_pid, status: :connected}}
-
-      error ->
-        error
-    end
+  defp __connect(bus_id, service, from, state) when is_pid(service) do
+    __connect_monitor([bus_id, service], from, state)
   end
 
-  defp __connect(bus_id, _, state) do
-    case :dbus_bus_connection.connect(bus_id) do
-      {:ok, connection} ->
-        {:ok, %{state | connection: connection, status: :connected}}
+  defp __connect(bus_id, _, from, state) do
+    __connect_monitor([bus_id], from, state)
+  end
 
-      error ->
-        error
-    end
+  defp __connect_monitor(args, from, state) do
+    owner = self()
+
+    {pid, ref} =
+      spawn_monitor(fn ->
+        ret = __connect_dbus_bus(args)
+        send(owner, {:dbus_connected, ret, from})
+      end)
+
+    %{state | pending_monitor: {pid, ref, from}}
+  end
+
+  defp __connect_dbus_bus([bus_id]) do
+    :dbus_bus_connection.connect(bus_id)
+  end
+
+  defp __connect_dbus_bus([bus_id, service]) do
+    :dbus_bus_connection.connect(bus_id, service)
   end
 
   defp can_connect?(%{status: status}) when status in [:init, :disconnected] do

@@ -1,4 +1,5 @@
 defmodule ExDBus.Service do
+  require Logger
   use GenServer
   alias ExDBus.Tree
   alias ExDBus.Spec
@@ -36,7 +37,8 @@ defmodule ExDBus.Service do
       service: nil,
       server: server,
       registered_objects: %{},
-      router: router
+      router: router,
+      error: nil
     }
 
     case connect_bus(self()) do
@@ -59,7 +61,8 @@ defmodule ExDBus.Service do
         {:ok, state}
 
       error ->
-        {:stop, error}
+        Logger.debug("Failed to connect to D-Bus: #{inspect(error)}")
+        {:ok, Map.put(state, :error, error)}
     end
   end
 
@@ -79,7 +82,7 @@ defmodule ExDBus.Service do
     GenServer.call(service_pid, :get_bus)
   end
 
-  @spec get_name(pid()) :: nil | String.t()
+  @spec get_name(pid() | {:via, atom(), any()}) :: nil | String.t()
   def get_name(service_pid) do
     GenServer.call(service_pid, :get_name)
   end
