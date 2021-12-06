@@ -165,7 +165,7 @@ defmodule ErlangDBus.Message do
     {:dbus_header, endian, type, flags, version, size, serial, fields}
   end
 
-  def set_body(signature, [_ | _] = types, body, msg) do
+  def set_body(signature, types, body, msg) when is_list(types) do
     :dbus_message.set_body(signature, types, body, msg)
   end
 
