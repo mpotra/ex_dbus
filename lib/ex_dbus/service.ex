@@ -19,6 +19,8 @@ defmodule ExDBus.Service do
     schema = Keyword.get(opts, :schema, nil)
     server = Keyword.get(opts, :server, nil)
     router = Keyword.get(opts, :router, nil)
+    # Default cookie for EXTERNAL auth mechanism, for user uid 1000
+    cookie = Keyword.get(opts, :cookie, "31303030")
 
     # if service_name == nil do
     #   # raise "Service requires the :name option"
@@ -38,8 +40,22 @@ defmodule ExDBus.Service do
       server: server,
       registered_objects: %{},
       router: router,
+      cookie: cookie,
       error: nil
     }
+
+    if cookie == :system_user do
+      case fetch_system_uid() do
+        {:ok, ""} -> Logger.warn("Failed to set D-Bus cookie :user : Empty uid")
+        {:ok, uid} -> set_dbus_cookie(Base.encode16(uid))
+        {:error, error} -> Logger.warn("Failed to set D-Bus cookie :user : #{inspect(error)}")
+      end
+    else
+      # erlang-dbus hardcodes the "1000" uid cookie as default.
+      if is_binary(cookie) and String.length(cookie) > 0 and cookie != "31303030" do
+        set_dbus_cookie(cookie)
+      end
+    end
 
     case connect_bus(self()) do
       {:ok, bus} ->
@@ -487,7 +503,7 @@ defmodule ExDBus.Service do
     end
   end
 
-  def call_method_callback(callback, _method_name, args, context) when is_function(callback) do
+  defp call_method_callback(callback, _method_name, args, context) when is_function(callback) do
     try do
       callback.(args, context)
     rescue
@@ -497,7 +513,51 @@ defmodule ExDBus.Service do
     end
   end
 
-  def call_method_callback({:call, pid, remote_method}, method_name, args, context) do
+  defp call_method_callback({:call, pid, remote_method}, method_name, args, context) do
     GenServer.call(pid, {remote_method, method_name, args, context})
+  end
+
+  defp fetch_system_uid() do
+    case get_env(:uid) do
+      {:ok, uid} ->
+        {:ok, uid}
+
+      _ ->
+        case get_env(:user) do
+          {:ok, uid} -> {:ok, uid}
+          error -> error
+        end
+    end
+  end
+
+  defp get_env(:uid) do
+    case System.get_env("UID") do
+      "" -> {:error, "Missing UID env variable"}
+      uid when is_binary(uid) -> {:ok, uid}
+      _ -> {:error, "Invalid UID env variable"}
+    end
+  end
+
+  defp get_env(:user) do
+    case System.get_env("USER") do
+      "" -> {:error, "Missing USER env variable"}
+      user when is_binary(user) -> get_user_uid(user)
+      _ -> {:error, "Invalid USER env variable"}
+    end
+  end
+
+  defp get_user_uid(username) when is_binary(username) do
+    try do
+      case System.cmd("id", ["-u", username]) do
+        {uidn, 0} -> {:ok, String.trim(uidn)}
+        {_, exit_code} -> {:error, "Failed to get username uid with exit code #{exit_code}"}
+      end
+    rescue
+      error -> {:error, error}
+    end
+  end
+
+  defp set_dbus_cookie(cookie) when is_binary(cookie) do
+    Application.put_env(:dbus, :external_cookie, cookie)
   end
 end
